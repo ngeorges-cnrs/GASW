@@ -1,18 +1,15 @@
 #!/bin/bash
 
 function info {
-  local D=`date`
-  echo [ INFO - $D ] $*
+  echo "[ INFO - $(date) ] $*"
 }
 
 function warning {
-  local D=`date`
-  echo [ WARN - $D ] $*
+  echo "[ WARN - $(date) ] $*"
 }
 
 function error {
-  local D=`date`
-  echo [ ERROR - $D ] $* >&2
+  echo "[ ERROR - $(date) ] $*" >&2
 }
 
 function startLog {
@@ -63,11 +60,11 @@ function download_udocker {
   info "cloning udocker ${UDOCKER_TAG} "
   git clone --depth=1 --branch ${UDOCKER_TAG} https://github.com/indigo-dc/udocker.git
   (cd udocker/udocker; ln -s maincmd.py udocker)
-  export PATH=`pwd`/udocker/udocker:$PATH
+  export PATH="$PWD/udocker/udocker:$PATH"
   
   #creating a temporary directory for udocker containers
   mkdir -p containers
-  export UDOCKER_CONTAINERS=$PWD/containers
+  export UDOCKER_CONTAINERS="$PWD/containers"
   
   #find pre-deployed containers on CVMFS, and create a symlink to the udocker containers directory
   ## use a global velocity escape to avoid velocity escaping issue
@@ -81,27 +78,27 @@ function download_udocker {
         ./udocker/udocker/udocker $MYARGS
 EOF
   chmod a+x docker
-  export PATH=$PWD:$PATH
+  export PATH="$PWD:$PATH"
 }
 
 function cleanup {
     if [[ $isGfalmountExec -eq 0 ]]    #flag checks if directories are mounted with gfal
     then
         unmountGfal    #unmounts all gfal mounted directories
-        unlink /tmp/*_$(basename $PWD)
+        unlink /tmp/*_$(basename "$PWD")
     fi
     startLog cleanup
     info "=== ls -a ==="
     ls -a
     info "=== ls $cacheDir/$cacheFile ==="
-    ls $cacheDir/$cacheFile
+    ls "$cacheDir/$cacheFile"
     info "=== cat $cacheDir/$cacheFile === "
-    cat $cacheDir/$cacheFile
+    cat "$cacheDir/$cacheFile"
     info "Cleaning up: rm * -Rf"
     #\rm * -Rf
     if [ "${BACKPID}" != "" ]
     then
-        for i in `ps --ppid ${BACKPID} -o pid | grep -v PID`
+        for i in $(ps --ppid ${BACKPID} -o pid | grep -v PID)
         do
             info "Killing child of background script (pid ${i})"
             kill -9 ${i}
@@ -332,7 +329,7 @@ function downloadLFN {
         info "sendReceiveTimeout is $sendReceiveTimeout"
     fi
 
-    local LOCAL=${PWD}/`basename ${LFN}`
+    local LOCAL=${PWD}/$(basename ${LFN})
     info "Removing file ${LOCAL} in case it is already here"
     \rm -f ${LOCAL}
 
@@ -351,7 +348,7 @@ function downloadLFN {
         RET_VAL=0
     else
         error "dirac-dms-get-file failed"
-        error "`cat get-file.log`"
+        error "$(cat get-file.log)"
         RET_VAL=1
     fi
 
@@ -415,7 +412,7 @@ function mountGfal {
 
     CREATE_DIR_COMMAND="mkdir -p $gfal_basename"
     SYM_LINK_COMMAND="ln -s $PWD/$gfal_basename /tmp/$job_id"
-    GFAL_COMMAND="gfalFS -s /tmp/$job_id ${fileName}"
+    GFAL_COMMAND="gfalfs -s /tmp/$job_id ${fileName}"
 
     ${CREATE_DIR_COMMAND}
     ${SYM_LINK_COMMAND}
@@ -461,14 +458,14 @@ function downloadShanoirFile {
     
     wait_for_token
 
-    local token=`cat $SHANOIR_TOKEN_LOCATION`
+    local token=$(cat $SHANOIR_TOKEN_LOCATION)
 
     echo "token inside download : ${token}"
 
-    local fileName=`echo $URI | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i'`
-    local apiUrl=`echo $URI | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i'`
-    local format=`echo $URI | sed -r 's/^.*[?&]format=([^&]*)(&.*)?$/\1/i'`
-    local resourceId=`echo $URI | sed -r 's/^.*[?&]resourceId=([^&]*)(&.*)?$/\1/i'`
+    local fileName=$(echo $URI | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i')
+    local apiUrl=$(echo $URI | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
+    local format=$(echo $URI | sed -r 's/^.*[?&]format=([^&]*)(&.*)?$/\1/i')
+    local resourceId=$(echo $URI | sed -r 's/^.*[?&]resourceId=([^&]*)(&.*)?$/\1/i')
 
     COMMAND(){
         curl --write-out '%{http_code}' -o ${fileName} --request GET "${apiUrl}/${resourceId}?format=${format}" --header "Authorization: Bearer ${token}"
@@ -517,7 +514,7 @@ function downloadShanoirFile {
 
 function downloadURI {
     local URI=$1
-    local URI_LOWER=`echo $1 | awk '{print tolower($0)}'`
+    local URI_LOWER=$(echo $1 | awk '{print tolower($0)}')
 
     startLog file_download uri="${URI}"
 
@@ -525,7 +522,7 @@ function downloadURI {
     then
         ## Extract the path part from the uri, and remove // if
         ## present in path.
-        LFN=`echo "${URI}" | sed -r -e 's%^\w+://[^/]*(/[^?]+)(\?.*)?$%\1%' -e 's#//#/#g'`
+        LFN=$(echo "${URI}" | sed -r -e 's%^\w+://[^/]*(/[^?]+)(\?.*)?$%\1%' -e 's#//#/#g')
 
         checkCacheDownloadAndCacheLFN $LFN
         validateDownload "Cannot download LFN file"
@@ -533,7 +530,7 @@ function downloadURI {
 
     if [[ ${URI_LOWER} == file:/* ]]
     then
-        local FILENAME=`echo $URI | sed 's%file://*%/%'`
+        local FILENAME=$(echo $URI | sed 's%file://*%/%')
         cp $FILENAME .
         validateDownload "Cannot copy input file: $FILENAME"
     fi
@@ -900,7 +897,7 @@ function checkBosh {
     if [ $? != 0 ]
     then
         info "bosh is not found in PATH or it is does not work fine, searching for another local version"
-        local HOMEBOSH=`find $HOME -name bosh`
+        local HOMEBOSH=$(find $HOME -name bosh)
         if [ -z "$HOMEBOSH" ]
         then
             info "bosh not found, trying to install it"
