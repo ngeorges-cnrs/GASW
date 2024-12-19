@@ -59,12 +59,10 @@ public class SEEntryPointData implements SEEntryPointsDAO {
     @Override
     public synchronized void add(SEEntryPoint seEntryPoint) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.save(seEntryPoint);
+            session.merge(seEntryPoint);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -75,13 +73,12 @@ public class SEEntryPointData implements SEEntryPointsDAO {
     @Override
     public synchronized SEEntryPoint getByHostName(String hostname) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            SEEntryPoint entryPoint = (SEEntryPoint) session.getNamedQuery("EntryPoints.findByHostname")
-                    .setString("hostname", hostname).uniqueResult();
+            SEEntryPoint entryPoint = session.createNamedQuery("EntryPoints.findByHostname", SEEntryPoint.class)
+                    .setParameter("hostname", hostname).uniqueResult();
             session.getTransaction().commit();
-            session.close();
 
             return entryPoint;
 

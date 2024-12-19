@@ -43,6 +43,6 @@ import fr.insalyon.creatis.gasw.bean.SEEntryPoint;
 public interface SEEntryPointsDAO {
     
     public void add(SEEntryPoint seEntryPoint) throws DAOException;
-    
+
     public SEEntryPoint getByHostName(String hostname) throws DAOException;
 }

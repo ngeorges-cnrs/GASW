@@ -59,12 +59,10 @@ public class NodeData implements NodeDAO {
     @Override
     public void add(Node node) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.saveOrUpdate(node);
+            session.merge(node);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -75,15 +73,13 @@ public class NodeData implements NodeDAO {
     @Override
     public Node getNodeBySiteAndNodeName(String site, String nodeName) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            Node node = (Node) session.getNamedQuery("Node.findBySiteAndNodeName")
-                    .setString("siteName", site)
-                    .setString("nodeName", nodeName)
+            Node node = session.createNamedQuery("Node.findBySiteAndNodeName", Node.class)
+                    .setParameter("siteName", site)
+                    .setParameter("nodeName", nodeName)
                     .uniqueResult();
             session.getTransaction().commit();
-            session.close();
 
             return node;
 

@@ -44,10 +44,16 @@ import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.log4j.Logger;
 import org.hibernate.SessionFactory;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.service.ServiceRegistry;
-import org.hibernate.service.ServiceRegistryBuilder;
 
+import fr.insalyon.creatis.gasw.bean.Data;
+import fr.insalyon.creatis.gasw.bean.DataToReplicate;
+import fr.insalyon.creatis.gasw.bean.Job;
+import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
+import fr.insalyon.creatis.gasw.bean.Node;
+import fr.insalyon.creatis.gasw.bean.NodeID;
 import fr.insalyon.creatis.gasw.bean.SEEntryPoint;
 import fr.insalyon.creatis.gasw.bean.SEEntryPointID;
 import fr.insalyon.creatis.gasw.dao.DAOException;
@@ -281,7 +287,18 @@ public class GaswConfiguration {
         cfg.setProperty("hibernate.dialect", dbPlugin.getHibernateDialect());
         cfg.setProperty("hibernate.connection.username", dbPlugin.getUserName());
         cfg.setProperty("hibernate.connection.password", dbPlugin.getPassword());
-
+        cfg.setProperty("hibernate.hbm2ddl.auto", "update");
+        cfg.setProperty("hibernate.show_sql", false);
+        cfg.setProperty("hibernate.format_sql", "false");
+        cfg.addAnnotatedClass(Data.class);
+        cfg.addAnnotatedClass(DataToReplicate.class);
+        cfg.addAnnotatedClass(Job.class);
+        cfg.addAnnotatedClass(JobMinorStatus.class);
+        cfg.addAnnotatedClass(Node.class);
+        cfg.addAnnotatedClass(NodeID.class);
+        cfg.addAnnotatedClass(SEEntryPoint.class);
+        cfg.addAnnotatedClass(SEEntryPointID.class);
+        
         for (ExecutorPlugin executor : executorPlugins) {
             for (Class c : executor.getPersistentClasses()) {
                 cfg.addAnnotatedClass(c);
@@ -294,7 +311,7 @@ public class GaswConfiguration {
             listener.load();
         }
 
-        ServiceRegistry serviceRegistry = new ServiceRegistryBuilder().applySettings(cfg.getProperties()).buildServiceRegistry();
+        ServiceRegistry serviceRegistry = new StandardServiceRegistryBuilder().applySettings(cfg.getProperties()).build();
         cfg.configure();
         sessionFactory = cfg.buildSessionFactory(serviceRegistry);
     }

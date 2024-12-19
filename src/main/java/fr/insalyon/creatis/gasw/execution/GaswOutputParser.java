@@ -258,22 +258,22 @@ public abstract class GaswOutputParser extends Thread {
                         }
 
                     } else if (line.startsWith("processor")) {
-                        node.setnCpus(new Integer(line.split(":")[1].trim()) + 1);
+                        node.setnCpus(Integer.parseInt(line.split(":")[1].trim()) + 1);
 
                     } else if (line.startsWith("model name")) {
                         node.setCpuModelName(line.split(":")[1].trim());
 
                     } else if (line.startsWith("cpu MHz")) {
-                        node.setCpuMhz(new Double(line.split(":")[1].trim()));
+                        node.setCpuMhz(Double.parseDouble(line.split(":")[1].trim()));
 
                     } else if (line.startsWith("cache size")) {
-                        node.setCpuCacheSize(new Integer(line.split(":")[1].trim().split(" ")[0]));
+                        node.setCpuCacheSize(Integer.parseInt(line.split(":")[1].trim().split(" ")[0]));
 
                     } else if (line.startsWith("bogomips")) {
-                        node.setCpuBogoMips(new Double(line.split(":")[1].trim()));
+                        node.setCpuBogoMips(Double.parseDouble(line.split(":")[1].trim()));
 
                     } else if (line.startsWith("MemTotal:")) {
-                        node.setMemTotal(new Integer(line.split("\\s+")[1]));
+                        node.setMemTotal(Integer.parseInt(line.split("\\s+")[1]));
 
                     } else if (line.startsWith("<inputs_download>")) {
                         isInputDownload = true;

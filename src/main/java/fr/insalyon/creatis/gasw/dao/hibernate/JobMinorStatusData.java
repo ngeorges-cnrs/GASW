@@ -61,12 +61,10 @@ public class JobMinorStatusData implements JobMinorStatusDAO {
     @Override
     public void add(JobMinorStatus jobMinorStatus) throws DAOException {
 
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.save(jobMinorStatus);
+            session.merge(jobMinorStatus);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -77,18 +75,15 @@ public class JobMinorStatusData implements JobMinorStatusDAO {
     @Override
     public List<JobMinorStatus> getCheckpoints(String jobID) throws DAOException {
 
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            List<JobMinorStatus> list = (List<JobMinorStatus>) session
-                    .getNamedQuery("MinorStatus.findCheckpointById")
-                    .setString("jobId", jobID)
-                    .setString("checkpointInit", GaswMinorStatus.CheckPoint_Init.name())
-                    .setString("checkpointUpload", GaswMinorStatus.CheckPoint_Upload.name())
-                    .setString("checkpointEnd", GaswMinorStatus.CheckPoint_Upload.name())
+            List<JobMinorStatus> list = session.createNamedQuery("MinorStatus.findCheckpointById", JobMinorStatus.class)
+                    .setParameter("jobId", jobID)
+                    .setParameter("checkpointInit", GaswMinorStatus.CheckPoint_Init)
+                    .setParameter("checkpointUpload", GaswMinorStatus.CheckPoint_Upload)
+                    .setParameter("checkpointEnd", GaswMinorStatus.CheckPoint_Upload)
                     .list();
             session.getTransaction().commit();
-            session.close();
 
             return list;
 
@@ -101,21 +96,18 @@ public class JobMinorStatusData implements JobMinorStatusDAO {
     @Override
     public List<JobMinorStatus> getExecutionMinorStatus(String jobID) throws DAOException {
 
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            List<JobMinorStatus> list = (List<JobMinorStatus>) session
-                    .getNamedQuery("MinorStatus.findExecutionById")
-                    .setString("jobId", jobID)
-                    .setString("start", GaswMinorStatus.Started.name())
-                    .setString("background", GaswMinorStatus.Background.name())
-                    .setString("input", GaswMinorStatus.Inputs.name())
-                    .setString("application", GaswMinorStatus.Application.name())
-                    .setString("output", GaswMinorStatus.Outputs.name())
-                    .setString("finished", GaswMinorStatus.Finished.name())
+            List<JobMinorStatus> list = session.createNamedQuery("MinorStatus.findExecutionById", JobMinorStatus.class)
+                    .setParameter("jobId", jobID)
+                    .setParameter("start", GaswMinorStatus.Started)
+                    .setParameter("background", GaswMinorStatus.Background)
+                    .setParameter("input", GaswMinorStatus.Inputs)
+                    .setParameter("application", GaswMinorStatus.Application)
+                    .setParameter("output", GaswMinorStatus.Outputs)
+                    .setParameter("finished", GaswMinorStatus.Finished)
                     .list();
             session.getTransaction().commit();
-            session.close();
 
             return list;
 
@@ -129,14 +121,12 @@ public class JobMinorStatusData implements JobMinorStatusDAO {
     public long getDateDiff(String jobID, GaswMinorStatus start, 
             GaswMinorStatus end) throws DAOException {
 
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            List<JobMinorStatus> list = (List<JobMinorStatus>) session
-                    .getNamedQuery("MinorStatus.dateDiff")
-                    .setString("jobId", jobID)
-                    .setString("start", start.name())
-                    .setString("end", end.name())
+            List<JobMinorStatus> list = session.createNamedQuery("MinorStatus.dateDiff", JobMinorStatus.class)
+                    .setParameter("jobId", jobID)
+                    .setParameter("start", start)
+                    .setParameter("end", end)
                     .list();
             session.close();
             

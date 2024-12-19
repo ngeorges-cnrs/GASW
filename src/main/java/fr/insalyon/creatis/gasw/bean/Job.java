@@ -36,7 +36,7 @@ import fr.insalyon.creatis.gasw.execution.GaswStatus;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import javax.persistence.*;
+import jakarta.persistence.*;
 import org.hibernate.annotations.Index;
 
 /**

@@ -60,12 +60,10 @@ public class DataToReplicateData implements DataToReplicateDAO {
     @Override
     public synchronized void add(DataToReplicate dataToReplicate) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.saveOrUpdate(dataToReplicate);
+            session.merge(dataToReplicate);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -76,12 +74,10 @@ public class DataToReplicateData implements DataToReplicateDAO {
     @Override
     public synchronized void update(DataToReplicate dataToReplicate) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.update(dataToReplicate);
+            session.merge(dataToReplicate);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -92,12 +88,10 @@ public class DataToReplicateData implements DataToReplicateDAO {
     @Override
     public synchronized void remove(DataToReplicate dataToReplicate) throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            session.delete(dataToReplicate);
+            session.remove(dataToReplicate);
             session.getTransaction().commit();
-            session.close();
 
         } catch (HibernateException ex) {
             logger.error(ex);
@@ -108,12 +102,11 @@ public class DataToReplicateData implements DataToReplicateDAO {
     @Override
     public synchronized List<DataToReplicate> get() throws DAOException {
         
-        try {
-            Session session = sessionFactory.openSession();
+        try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
-            List<DataToReplicate> list = (List<DataToReplicate>) session.getNamedQuery("DataToReplicate.list").list();
+            List<DataToReplicate> list = session.createNamedQuery("DataToReplicate.list", DataToReplicate.class)
+                    .list();
             session.getTransaction().commit();
-            session.close();
 
             return list;
 

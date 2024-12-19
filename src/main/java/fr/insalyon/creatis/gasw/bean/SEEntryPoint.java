@@ -34,7 +34,7 @@
  */
 package fr.insalyon.creatis.gasw.bean;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 
 /**
  *

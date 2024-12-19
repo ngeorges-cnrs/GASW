@@ -36,7 +36,7 @@ package fr.insalyon.creatis.gasw.bean;
 
 import java.net.URI;
 import java.util.Date;
-import javax.persistence.*;
+import jakarta.persistence.*;
 
 /**
  *
