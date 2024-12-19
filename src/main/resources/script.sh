@@ -18,7 +18,7 @@ function startLog {
 }
 
 function stopLog {
-  local logName=$1
+  local logName="$1"
   echo "</${logName}>" >&1
   echo "</${logName}>" >&2
 }
@@ -123,7 +123,7 @@ fi' INT EXIT
 
 function checkCacheDownloadAndCacheLFN {
 
-    local LFN=$1
+    local LFN="$1"
     local download="true"
 
     local LOCALPATH=$(awk -v L=${LFN} '$1==L {print $2}' $cacheDir/$cacheFile)
@@ -149,7 +149,7 @@ function checkCacheDownloadAndCacheLFN {
             if [ "${TIMESTAMP_CACHE}" = "${TIMESTAMP_LOCAL}" ]; then
                 info "The file was not touched since it was added to the cache: test if it is up-to-date"
                 local date_grid_s=$(lfc-ls -l ${LFN} | awk -F' ' '{print $6, $7, $8}')
-                local MONTHGRID=$(echo ${date_grid_s} | awk -F' ' '{print $1}')
+                local MONTHGRID=$(echo "${date_grid_s}" | awk -F' ' '{print $1}')
                 MONTHTIME=$(date -d "${MONTHGRID} 1 00:00" +%s)
                 if [ -n "${MONTHTIME}" ] && [ -n "${date_grid_s}" ]; then
                     if [ "${MONTHTIME}" -gt "${currentDate}" ]; then
@@ -221,7 +221,7 @@ function refresh_token {
 
     echo "refresh token process started !"
 
-    local URI=$1
+    local URI="$1"
     local keycloak_client_id=$(echo "$URI" | sed -r 's/^.*[?&]keycloak_client_id=([^&]*)(&.*)?$/\1/i')
     local refresh_token_url=$(echo "$URI" | sed -r 's/^.*[?&]refresh_token_url=([^&]*)(&.*)?$/\1/i')
 
@@ -304,7 +304,7 @@ function wait_for_token {
 
 function downloadLFN {
 
-    local LFN=$1
+    local LFN="$1"
     echo "LFN : ${LFN}"
 
     # Sanitize LFN:
@@ -312,7 +312,7 @@ function downloadLFN {
     #    but does not work as expected with comdirac commands like
     #    dmkdir.
     # - "//" are not accepted, neither by dirac-dms-*, nor by dmkdir.
-    LFN=$(echo ${LFN} | sed -r -e 's/^lfn://' -e 's#//#/#g')
+    LFN=$(echo "${LFN}" | sed -r -e 's/^lfn://' -e 's#//#/#g')
 
     info "getting file size and computing sendReceiveTimeout"
     local size=$(dirac-dms-lfn-metadata ${LFN} | grep Size | sed -r 's/.* ([0-9]+),/\1/')
@@ -329,7 +329,7 @@ function downloadLFN {
         info "sendReceiveTimeout is $sendReceiveTimeout"
     fi
 
-    local LOCAL=${PWD}/$(basename ${LFN})
+    local LOCAL="$PWD/$(basename "$LFN")"
     info "Removing file ${LOCAL} in case it is already here"
     \rm -f ${LOCAL}
 
@@ -366,14 +366,14 @@ export -f downloadLFN
 # changes should be done the same in both functions.
 #
 function downloadGirderFile {
-    local URI=$1
+    local URI="$1"
 
     # The regexpes are written so that case is ignored and the
     # arguments can be in any order.
-    local fileName=$(echo $URI | sed -r 's#^girder:/(//)?([^/].*)\?.*$#\2#i')
-    local apiUrl=$(echo $URI | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
-    local fileId=$(echo $URI | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
-    local token=$(echo $URI | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
+    local fileName=$(echo "$URI" | sed -r 's#^girder:/(//)?([^/].*)\?.*$#\2#i')
+    local apiUrl=$(echo "$URI" | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
+    local fileId=$(echo "$URI" | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
+    local token=$(echo "$URI" | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
 
     if [ ! $(which girder-client) ]; then
         pip install --user girder-client
@@ -402,11 +402,11 @@ check_mount='$(test -z $(for file in *; do findmnt -t fuse.gfalFS -lo Target -n 
 isGfalmountExec=1
 
 function mountGfal {
-    local URI=$1
+    local URI="$1"
 
     # The regexpes are written so that case is ignored and the
     # arguments can be in any order.
-    local fileName=$(echo $URI | sed -r 's#^srm:/(//)?([^/].*)\?.*$#\2#i')
+    local fileName=$(echo "$URI" | sed -r 's#^srm:/(//)?([^/].*)\?.*$#\2#i')
     local gfal_basename=$(basename ${fileName})
     local job_id=${gfal_basename}_$(basename $PWD)
 
@@ -454,7 +454,7 @@ export -f unmountGfal
 # This method depends on the refresh token process to refresh the token when it needs
 #
 function downloadShanoirFile {
-    local URI=$1
+    local URI="$1"
     
     wait_for_token
 
@@ -462,10 +462,10 @@ function downloadShanoirFile {
 
     echo "token inside download : ${token}"
 
-    local fileName=$(echo $URI | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i')
-    local apiUrl=$(echo $URI | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
-    local format=$(echo $URI | sed -r 's/^.*[?&]format=([^&]*)(&.*)?$/\1/i')
-    local resourceId=$(echo $URI | sed -r 's/^.*[?&]resourceId=([^&]*)(&.*)?$/\1/i')
+    local fileName=$(echo "$URI" | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i')
+    local apiUrl=$(echo "$URI" | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
+    local format=$(echo "$URI" | sed -r 's/^.*[?&]format=([^&]*)(&.*)?$/\1/i')
+    local resourceId=$(echo "$URI" | sed -r 's/^.*[?&]resourceId=([^&]*)(&.*)?$/\1/i')
 
     COMMAND(){
         curl --write-out '%{http_code}' -o ${fileName} --request GET "${apiUrl}/${resourceId}?format=${format}" --header "Authorization: Bearer ${token}"
@@ -513,7 +513,7 @@ function downloadShanoirFile {
 }
 
 function downloadURI {
-    local URI=$1
+    local URI="$1"
     local URI_LOWER=$(echo $1 | awk '{print tolower($0)}')
 
     startLog file_download uri="${URI}"
@@ -530,7 +530,7 @@ function downloadURI {
 
     if [[ ${URI_LOWER} == file:/* ]]
     then
-        local FILENAME=$(echo $URI | sed 's%file://*%/%')
+        local FILENAME=$(echo "$URI" | sed 's%file://*%/%')
         cp $FILENAME .
         validateDownload "Cannot copy input file: $FILENAME"
     fi
@@ -618,7 +618,7 @@ nSEs() {
 }
 
 getAndRemoveSE() {
-    local index=$1
+    local index="$1"
     local i=0
     local NSE=""
     RESULT=""
@@ -649,9 +649,9 @@ chooseRandomSE() {
 }
 
 uploadLfnFile() {
-    local LFN=$1
-    local FILE=$2
-    local nrep=$3
+    local LFN="$1"
+    local FILE="$2"
+    local nrep="$3"
     local SELIST=${SE}
 
     # Sanitize LFN:
@@ -727,18 +727,18 @@ uploadLfnFile() {
 #
 
 uploadShanoirFile() {
-    local URI=$1
+    local URI="$1"
 
     wait_for_token
 
     local token=$(cat $SHANOIR_TOKEN_LOCATION)
 
-    local upload_url=$(echo $URI | sed -r 's/^.*[?&]upload_url=([^&]*)(&.*)?$/\1/i')
-    local fileName=$(echo $URI | sed -r 's#^shanoir:/(//)?(.*/(.+))\?.*$#\3#i')
-    local filePath=$(echo $URI | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i')
+    local upload_url=$(echo "$URI" | sed -r 's/^.*[?&]upload_url=([^&]*)(&.*)?$/\1/i')
+    local fileName=$(echo "$URI" | sed -r 's#^shanoir:/(//)?(.*/(.+))\?.*$#\3#i')
+    local filePath=$(echo "$URI" | sed -r 's#^shanoir:/(//)?([^/].*)\?.*$#\2#i')
    
-    local type=$(echo $URI | sed -r 's/^.*[?&]type=([^&]*)(&.*)?$/\1/i')
-    local md5=$(echo $URI | sed -r 's/^.*[?&]md5=([^&]*)(&.*)?$/\1/i')
+    local type=$(echo "$URI" | sed -r 's/^.*[?&]type=([^&]*)(&.*)?$/\1/i')
+    local md5=$(echo "$URI" | sed -r 's/^.*[?&]md5=([^&]*)(&.*)?$/\1/i')
 
     COMMAND() { 
         (echo -n '{"base64Content": "'; base64 ${fileName}; echo '", "type":"'; echo ${type}; echo '", "md5":"'; echo ${md5} ; echo '"}') | curl --write-out '%{http_code}' --request PUT "${upload_url}/${filePath}"  --header "Authorization: Bearer ${token}"  --header "Content-Type: application/carmin+json" --header 'Accept: application/json, text/plain, */*' -d @-
@@ -764,12 +764,12 @@ uploadShanoirFile() {
 #
 
 uploadGirderFile() {
-    local URI=$1
+    local URI="$1"
 
-    local fileName=$(echo $URI | sed -r 's#^girder:/(//)?(.*/)?([^/].*)\?.*$#\3#i')
-    local apiUrl=$(echo $URI | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
-    local fileId=$(echo $URI | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
-    local token=$(echo $URI | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
+    local fileName=$(echo "$URI" | sed -r 's#^girder:/(//)?(.*/)?([^/].*)\?.*$#\3#i')
+    local apiUrl=$(echo "$URI" | sed -r 's/^.*[?&]apiurl=([^&]*)(&.*)?$/\1/i')
+    local fileId=$(echo "$URI" | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
+    local token=$(echo "$URI" | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
 
     if [ ! $(which girder-client) ]; then
         pip install --user girder-client
@@ -791,10 +791,10 @@ uploadGirderFile() {
 }
 
 function upload {
-    local URI=$1
-    local ID=$2
-    local NREP=$3
-    local TEST=$4
+    local URI="$1"
+    local ID="$2"
+    local NREP="$3"
+    local TEST="$4"
     startLog file_upload uri="${URI}"
     
     # The pattern must NOT be put between quotation marks.
@@ -812,7 +812,7 @@ function upload {
             uploadGirderFile ${URI}
         fi
     elif [[ ${URI} == file:/* ]]; then
-        local FILENAME=$(echo $URI | sed 's%file://*%/%')
+        local FILENAME=$(echo "$URI" | sed 's%file://*%/%')
         local NAME=$(basename ${FILENAME})
 
         if [ -e $FILENAME ]; then
@@ -887,7 +887,7 @@ function delete {
 ####################################################################################################
 ####################################################################################################
 function checkBosh {
-  local BOSH_CVMFS_PATH=$1
+  local BOSH_CVMFS_PATH="$1"
   #by default, use CVMFS bosh
   ${BOSH_CVMFS_PATH}/bosh create foo.sh
   if [ $? != 0 ]
@@ -924,7 +924,7 @@ function checkBosh {
 }
 
 function copyProvenanceFile() {
-  local dest=$1
+  local dest="$1"
   # $BOUTIQUES_PROV_DIR is defined by GASW from the settings file
   if [ ! -d "$BOUTIQUES_PROV_DIR" ]; then
     error "Boutiques cache dir $BOUTIQUES_PROV_DIR does not exist."
@@ -949,15 +949,15 @@ echo "START date is ${START}"
 # Execution environment setup
 
 # Builds the custom environment
-export BASEDIR=${PWD}
-ENV=$defaultEnvironment
+export BASEDIR="$PWD"
+ENV="$defaultEnvironment"
 export $ENV
-export SE=$voDefaultSE
-USE_CLOSE_SE=$voUseCloseSE
-export BOSH_CVMFS_PATH=$boshCVMFSPath
-export CONTAINERS_CVMFS_PATH=$containersCVMFSPath
-export UDOCKER_TAG=$udockerTag
-export BOUTIQUES_PROV_DIR=$boutiquesProvenanceDir
+export SE="$voDefaultSE"
+USE_CLOSE_SE="$voUseCloseSE"
+export BOSH_CVMFS_PATH="$boshCVMFSPath"
+export CONTAINERS_CVMFS_PATH="$containersCVMFSPath"
+export UDOCKER_TAG="$udockerTag"
+export BOUTIQUES_PROV_DIR="$boutiquesProvenanceDir"
 
 export MOTEUR_WORKFLOWID="$simulationID"
 
@@ -1060,7 +1060,7 @@ fi
 ####################################################################################################
 
 # Export current directory to LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=${PWD}:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
 
 # Execute the command
 PYTHONPATH=".:$PYTHONPATH" $BOSHEXEC exec launch ../$boutiquesFilename ../inv/$invocationJsonFilename -v $PWD/../cache:$PWD/../cache
