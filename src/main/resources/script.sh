@@ -8,16 +8,22 @@
 # see if cleanable: (global vars tracking and configurationFile loading issue)
 # shellcheck disable=SC2154  # referenced but not assigned
 
+function logDate {
+  # LC_ALL=C: use neutral locale for date output
+  # xargs: merge consecutive spaces to keep previous unquoted behaviour
+  LC_ALL=C TZ=UTC date | xargs
+}
+
 function info {
-  echo "[ INFO - $(date) ] $*"
+  echo "[ INFO - $(logDate) ] $*"
 }
 
 function warning {
-  echo "[ WARN - $(date) ] $*"
+  echo "[ WARN - $(logDate) ] $*"
 }
 
 function error {
-  echo "[ ERROR - $(date) ] $*" >&2
+  echo "[ ERROR - $(logDate) ] $*" >&2
 }
 
 function startLog {
@@ -151,7 +157,7 @@ function checkCacheDownloadAndCacheLFN {
             local LOCALMONTH=$(ls -la "$LOCALPATH" | awk -F' ' '{print $6}')
             local MONTHTIME=$(date -d "$LOCALMONTH 1 00:00" +%s)
             date_local=$(ls -la "$LOCALPATH" | awk -F' ' '{print $6, $7, $8}')
-            if [ "${MONTHTIME}" -gt "$currentDate" ]; then
+            if [ "$MONTHTIME" -gt "$currentDate" ]; then
                 TIMESTAMP_LOCAL=$(date -d "$date_local $YEARBEFORE" +%s)
             else
                 TIMESTAMP_LOCAL=$(date -d "$date_local $YEAR" +%s)
@@ -420,7 +426,7 @@ function mountGfal {
 
     CREATE_DIR_COMMAND="mkdir -p $gfal_basename"
     SYM_LINK_COMMAND="ln -s $PWD/$gfal_basename /tmp/$job_id"
-    GFAL_COMMAND="gfalfs -s /tmp/$job_id ${fileName}"
+    GFAL_COMMAND="gfalFS -s /tmp/$job_id ${fileName}"
 
     ${CREATE_DIR_COMMAND}
     ${SYM_LINK_COMMAND}
@@ -991,7 +997,8 @@ fi
 BACKPID=""
 
 # DIRAC may wrongly position this variable
-if [ ! -d "$X509_CERT_DIR" ]; then
+# unset it if it is defined and not a directory
+if [ -n "${X509_CERT_DIR+set}" -a ! -d "$X509_CERT_DIR" ]; then
     echo "Unsetting invalid X509_CERT_DIR ($X509_CERT_DIR)"
     unset X509_CERT_DIR
 fi
