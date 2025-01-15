@@ -5,10 +5,7 @@
 # shellcheck disable=SC2012  # ls vs find
 # shellcheck disable=SC2181  # style: if [ $? = 0 ] vs if command
 
-# see if cleanable: (global vars tracking and configurationFile loading issue)
-# shellcheck disable=SC2154  # referenced but not assigned
-
-### settings
+### global settings
 
 # Extract filename without extension
 DIRNAME=$(basename "${0%.sh}")
@@ -16,53 +13,6 @@ DIRNAME=$(basename "${0%.sh}")
 # Path to the configuration JSON file
 configurationFilename="$DIRNAME-configuration.sh"
 invocationJsonFilename="$DIRNAME-invocation.json"
-
-# Check if directories already exist (In case of LOCAL, the directories already exists. To replicate the LOCAL execution in DIRAC, we create the directories on the remote node)
-if [[ ! -d "config" || ! -d "inv" ]]; then
-  # Create the directories if they don't already exist
-  mkdir -p inv
-  mkdir -p config
-
-  # Copy the files to their respective directories after creation
-  cp "${configurationFilename}" config/
-  info "Copied ${configurationFilename} to config/"
-  cp "${invocationJsonFilename}" inv/
-  info "Copied ${invocationJsonFilename} to inv/"
-else
-  info "Directories already exist. Skipping copy."
-fi
-
-export BASEDIR="$PWD"
-configurationFile="config/$configurationFilename"
-# Source the configuration file
-if [ -f "$configurationFile" ]; then
-  # shellcheck disable=SC1090
-  source "$configurationFile"
-else
-  error "Configuration file $configurationFile not found!"
-  exit 1
-fi
-
-## XXX
-export -f cleanup
-trap 'echo "trap activation" && stopRefreshingToken | \
-if [ "$check_cleanup" = true ]; then \
-  echo "cleanup was already executed successfully"; \
-else \
-  echo "Executing cleanup" && cleanup; \
-fi' INT EXIT
-
-## XXX
-SHANOIR_TOKEN_LOCATION="${PWD}/cache/SHANOIR_TOKEN.txt"
-SHANOIR_REFRESH_TOKEN_LOCATION="${PWD}/cache/SHANOIR_REFRESH_TOKEN.txt"
-REFRESHING_JOB_STARTED=false
-REFRESH_PID=""
-
-## XXX
-# shellcheck disable=SC2016
-check_mount='$(test -z $(for file in *; do findmnt -t fuse.gfalFS -lo Target -n -T $(realpath ${file}); done) && echo 1 || echo 0)'
-isGfalmountExec=1
-
 
 ### functions
 
@@ -153,6 +103,35 @@ EOF
   chmod a+x docker
   export PATH="$PWD:$PATH"
 }
+
+function showHostConfig {
+  echo "SE Linux mode is:"
+  /usr/sbin/getenforce
+  echo "gLite Job Id is ${GLITE_WMS_JOBID}"
+  echo "===== uname ===== "
+  uname -a
+  domainname -a
+  echo "===== network config ===== "
+  /sbin/ifconfig eth0
+  local dmesg_line=$(dmesg | grep 'Link is Up' | uniq)
+  local netspeed=$(echo "$dmesg_line" | grep -o '[0-9]*[[:space:]][a-zA-Z]bps'| awk '{gsub(/ /,"",$0);print}')
+  echo "NetSpeed = $netspeed ($dmesg_line)"
+  echo "===== CPU info ===== "
+  cat /proc/cpuinfo
+  echo "===== Memory info ===== "
+  cat /proc/meminfo
+  echo "===== lcg-cp location ===== "
+  which lcg-cp
+  echo "===== ls -a . ===== "
+  ls -a
+  echo "===== ls -a .. ===== "
+  ls -a ..
+  echo "===== env ====="
+  env
+  echo "===== rpm -qa  ===="
+  rpm -qa
+}
+
 
 function cleanup {
   # flag checks if directories are mounted with gfal
@@ -887,17 +866,89 @@ function copyProvenanceFile {
 
 ### main
 
+# Check if directories already exist (In case of LOCAL, the directories already exists. To replicate the LOCAL execution in DIRAC, we create the directories on the remote node)
+if [[ ! -d "config" || ! -d "inv" ]]; then
+  # Create the directories if they don't already exist
+  mkdir -p inv
+  mkdir -p config
+
+  # Copy the files to their respective directories after creation
+  cp "${configurationFilename}" config/
+  info "Copied ${configurationFilename} to config/"
+  cp "${invocationJsonFilename}" inv/
+  info "Copied ${invocationJsonFilename} to inv/"
+else
+  info "Directories already exist. Skipping copy."
+fi
+
+export BASEDIR="$PWD"
+configurationFile="config/$configurationFilename"
+# Source the configuration file
+if [ -f "$configurationFile" ]; then
+  # here we declare all variables that are expected in $configurationFile:
+  # this is useful both as a way to document this interface, and also to avoid
+  # having to disable SC2154 "variable referenced but not assigned"
+  defaultEnvironment=
+  cacheDir=
+  cacheFile=
+  minAvgDownloadThroughput=
+  srmTimeout=
+  simulationID=
+  timeout=
+  # shellcheck disable=SC2034
+  bdiiTimeout= # unused?
+  boshCVMFSPath=
+  voDefaultSE=
+  uploadURI=
+  downloads=
+  boutiquesFilename=
+  udockerTag=
+  containersCVMFSPath=
+  nrep=
+  voUseCloseSE=
+  boutiquesProvenanceDir=
+
+  # shellcheck disable=SC1090
+  source "$configurationFile"
+else
+  error "Configuration file $configurationFile not found!"
+  exit 1
+fi
+
+# Register cleanup handler
+export -f cleanup
+trap 'echo "trap activation" && stopRefreshingToken | \
+if [ "$check_cleanup" = true ]; then \
+  echo "cleanup was already executed successfully"; \
+else \
+  echo "Executing cleanup" && cleanup; \
+fi' INT EXIT
+
+# Shanoir token management
+SHANOIR_TOKEN_LOCATION="${PWD}/cache/SHANOIR_TOKEN.txt"
+SHANOIR_REFRESH_TOKEN_LOCATION="${PWD}/cache/SHANOIR_REFRESH_TOKEN.txt"
+REFRESHING_JOB_STARTED=false
+REFRESH_PID=""
+
+# Gfal mount management
+# shellcheck disable=SC2016
+check_mount='$(test -z $(for file in *; do findmnt -t fuse.gfalFS -lo Target -n -T $(realpath ${file}); done) && echo 1 || echo 0)'
+isGfalmountExec=1
+
+# Start logging
 startLog header
-# Start log
 START=$(date +%s)
 echo "START date is ${START}"
 
 # Execution environment setup
 
 # Builds the custom environment
+# XXX unsure if intended: this just dumps env if $defaultEnvironment is empty
 ENV="$defaultEnvironment"
-# shellcheck disable=SC2163,SC2086
-export $ENV
+if test -n "$ENV"; then
+  # shellcheck disable=SC2163,SC2086
+  export $ENV
+fi
 export SE="$voDefaultSE"
 # shellcheck disable=SC2034
 USE_CLOSE_SE="$voUseCloseSE" # unused
@@ -905,7 +956,6 @@ export BOSH_CVMFS_PATH="$boshCVMFSPath"
 export CONTAINERS_CVMFS_PATH="$containersCVMFSPath"
 export UDOCKER_TAG="$udockerTag"
 export BOUTIQUES_PROV_DIR="$boutiquesProvenanceDir"
-
 export MOTEUR_WORKFLOWID="$simulationID"
 
 # Create execution directory
@@ -932,39 +982,13 @@ echo "END date is $(date +%s)"
 
 stopLog header
 
-
-startLog host_config
-
-echo "SE Linux mode is:"
-/usr/sbin/getenforce
-echo "gLite Job Id is ${GLITE_WMS_JOBID}"
-echo "===== uname ===== "
-uname -a
-domainname -a
-echo "===== network config ===== "
-/sbin/ifconfig eth0
-dmesg_line=$(dmesg | grep 'Link is Up' | uniq)
-netspeed=$(echo "$dmesg_line" | grep -o '[0-9]*[[:space:]][a-zA-Z]bps'| awk '{gsub(/ /,"",$0);print}')
-echo "NetSpeed = $netspeed ($dmesg_line)"
-echo "===== CPU info ===== "
-cat /proc/cpuinfo
-echo "===== Memory info ===== "
-cat /proc/meminfo
-echo "===== lcg-cp location ===== "
-which lcg-cp
-echo "===== ls -a . ===== "
-ls -a
-echo "===== ls -a .. ===== "
-ls -a ..
-echo "===== env ====="
-env
-echo "===== rpm -qa  ===="
-rpm -qa
+if [ "$XXX_SKIP_HOST_CONFIG" != "true" ]; then
+  startLog host_config
+  showHostConfig
+  stopLog host_config
+fi
 
 mkdir -p "$cacheDir"
-
-stopLog host_config
-
 
 startLog inputs_download
 
@@ -988,7 +1012,7 @@ stopLog inputs_download
 
 
 startLog application_environment
-# Stop log for application environment
+stopLog application_environment
 
 
 startLog application_execution
@@ -1011,7 +1035,7 @@ export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
 boshopts=()
 imagepath=$(python -c 'import sys,json;v=json.load(sys.stdin).get("custom",None);print(v.get("vip:imagepath","") if isinstance(v,dict) else "")' < "../$boutiquesFilename")
 if [ -n "$imagepath" ]; then
-    boshopts+=("--imagepath" "$imagepath")
+  boshopts+=("--imagepath" "$imagepath")
 fi
 
 # Execute the command
