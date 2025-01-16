@@ -11,9 +11,9 @@
 DIRNAME=$(basename "${0%.sh}")
 
 # Base directory
-export BASEDIR="$PWD"
+BASEDIR="$PWD"
 
-# Path to the configuration JSON file
+# Names of the configuration and invocation files
 configurationFilename="$DIRNAME-configuration.sh"
 invocationJsonFilename="$DIRNAME-invocation.json"
 
@@ -40,14 +40,13 @@ function error {
 }
 
 function startLog {
-  echo "<$*>" >&1
-  echo "<$*>" >&2
+  # write to stdout+stderr
+  echo "<$*>" | tee /dev/stderr
 }
 
 function stopLog {
   local logName="$1"
-  echo "</${logName}>" >&1
-  echo "</${logName}>" >&2
+  echo "</${logName}>" | tee /dev/stderr
 }
 
 function showHostConfig {
@@ -83,11 +82,10 @@ function showHostConfig {
 ## runtime tools installation
 
 function checkBosh {
-  local BOSH_CVMFS_PATH="$1"
   # by default, use CVMFS bosh
-  "$BOSH_CVMFS_PATH"/bosh create foo.sh
+  test -e "$boshCVMFSPath"/bosh && "$boshCVMFSPath"/bosh create foo.sh
   if [ $? != 0 ]; then
-    info "CVMFS bosh in ${BOSH_CVMFS_PATH} not working, checking for a local version"
+    info "CVMFS bosh in $boshCVMFSPath not working, checking for a local version"
     bosh create foo.sh
     if [ $? != 0 ]; then
       info "bosh is not found in PATH or it is does not work fine, searching for another local version"
@@ -111,7 +109,7 @@ function checkBosh {
       export BOSHEXEC="bosh"
     fi
   else # if bosh CVMFS works fine
-    export BOSHEXEC="${BOSH_CVMFS_PATH}/bosh"
+    export BOSHEXEC="$boshCVMFSPath/bosh"
   fi
 }
 
@@ -120,8 +118,8 @@ function checkDocker {
     return 0
   fi
   # install udocker (A basic user tool to execute simple docker containers in batch or interactive systems without root privileges)
-  info "cloning udocker $UDOCKER_TAG"
-  git clone --depth=1 --branch "$UDOCKER_TAG" https://github.com/indigo-dc/udocker.git
+  info "cloning udocker $udockerTag"
+  git clone --depth=1 --branch "$udockerTag" https://github.com/indigo-dc/udocker.git
   (cd udocker/udocker && ln -s maincmd.py udocker)
   export PATH="$PWD/udocker/udocker:$PATH"
 
@@ -131,7 +129,7 @@ function checkDocker {
 
   # find pre-deployed containers on CVMFS,
   # and create a symlink to the udocker containers directory.
-  for d in "$CONTAINERS_CVMFS_PATH"/*/; do
+  for d in "$containersCVMFSPath"/*/; do
     mkdir "containers/$(basename "${d%/}")" && ln -s "${d%/}"/* "containers/$(basename "${d%/}")/"
   done
   cat >docker <<'EOF'
@@ -184,17 +182,8 @@ function cleanup {
   ls "$cacheDir/$cacheFile"
   info "=== cat $cacheDir/$cacheFile === "
   cat "$cacheDir/$cacheFile"
-  info "Cleaning up: rm * -Rf"
-  #\rm * -Rf
-  if [ "$BACKPID" != "" ]; then
-    # shellcheck disable=SC2009
-    for i in $(ps --ppid "$BACKPID" -o pid | grep -v PID); do
-      info "Killing child of background script (pid $i)"
-      kill -9 "$i"
-    done
-    info "Killing background script (pid $BACKPID)"
-    kill -9 "$BACKPID"
-  fi
+  info "Cleaning up: $(echo rm * -Rf)"
+  rm -Rf -- *
   info "END date:"
   date +%s
   stopLog cleanup
@@ -204,8 +193,6 @@ function cleanup {
 ## cache management
 
 function addToCache {
-  cacheDir=${BASEDIR}/cache
-  mkdir -p "$cacheDir"
   touch "$cacheDir/$cacheFile"
   local LFN="$1"
   local FILE=$(basename "$2")
@@ -223,9 +210,9 @@ function addToCache {
   info "Removing all cache entries for ${LFN} (files will stay locally in case anyone else needs them)"
   local TEMP=$(mktemp temp.XXXXXX)
   awk -v L="${LFN}" '$1!=L {print}' "$cacheDir/$cacheFile" > "${TEMP}"
-  \mv -f "${TEMP}" "$cacheDir/$cacheFile"
+  mv -f "${TEMP}" "$cacheDir/$cacheFile"
   info "Adding file ${FILE} to cache and setting the timestamp"
-  \cp -f "${FILE}" "${NAME}"
+  cp -f "${FILE}" "${NAME}"
   local date_local=$(ls -la "${NAME}" | awk -F' ' '{print $6, $7, $8}')
   local TIMESTAMP=$(date -d "${date_local}" +%s)
   echo "${LFN} ${NAME} ${TIMESTAMP}" >> "$cacheDir/$cacheFile"
@@ -340,11 +327,11 @@ function refresh_token {
       curl -w "{\"status\":\"%{http_code}\"}" -sb -o --request POST "${refresh_token_url}" --header "Content-Type: application/x-www-form-urlencoded" --data-urlencode "client_id=${keycloak_client_id}" --data-urlencode "grant_type=refresh_token" --data-urlencode "refresh_token=${subshell_refresh_token}"
     }
 
-    refresh_response=$(COMMAND)
-    status_code=$(echo "$refresh_response" | grep -o '"status":"[^"]*' | grep -o '[^"]*$')
+    local refresh_response=$(COMMAND)
+    local status_code=$(echo "$refresh_response" | grep -o '"status":"[^"]*' | grep -o '[^"]*$')
 
     if [[ "$status_code" -ne 200 ]]; then
-      error_message=$(echo "$refresh_response" | grep -o '"error_description":"[^"]*' | grep -o '[^"]*$')
+      local error_message=$(echo "$refresh_response" | grep -o '"error_description":"[^"]*' | grep -o '[^"]*$')
       error "error while refreshing the token with status : ${status_code} and message error : ${error_message}"
       exit 1
     fi
@@ -422,7 +409,7 @@ function downloadLFN {
 
   local LOCAL="$PWD/$(basename "$LFN")"
   info "Removing file ${LOCAL} in case it is already here"
-  \rm -f "$LOCAL"
+  rm -f "$LOCAL"
 
   local totalTimeout=$((timeout + srmTimeout + sendReceiveTimeout))
 
@@ -442,7 +429,7 @@ function downloadLFN {
     RET_VAL=1
   fi
 
-  \rm get-file.log
+  rm get-file.log
   return ${RET_VAL}
 }
 
@@ -672,12 +659,9 @@ function performExec {
   echo "BEFORE_EXECUTION_REFERENCE" > BEFORE_EXECUTION_REFERENCE_FILE
   sleep 1
 
-  checkBosh "$BOSH_CVMFS_PATH"
+  checkBosh
   checkDocker
   checkSingularity
-
-  # Export current directory to LD_LIBRARY_PATH
-  export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
 
   # Extract imagepath
   local boshopts=()
@@ -687,7 +671,7 @@ function performExec {
   fi
 
   # Execute the command
-  PYTHONPATH=".:$PYTHONPATH" "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache"
+  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache"
 
   # Check if execution was successful
   if [ $? -ne 0 ]; then
@@ -750,7 +734,7 @@ function uploadLfnFile {
   local LFN="$1"
   local FILE="$2"
   local nrep="$3"
-  local SELIST=${SE}
+  local SELIST="$voDefaultSE"
 
   # Sanitize LFN:
   # - "lfn:" at the beginning is optional for dirac-dms-* commands,
@@ -802,7 +786,7 @@ function uploadLfnFile {
     error "$(cat dirac.log)"
     warning "Copy/Replication of ${LFN} to SE ${DEST} failed"
     fi
-    \rm dirac.log
+    rm dirac.log
     chooseRandomSE
     DEST=${RESULT}
   done
@@ -939,21 +923,21 @@ function upload {
 
 function copyProvenanceFile {
   local dest="$1"
-  # $BOUTIQUES_PROV_DIR is defined by GASW from the settings file
-  if [ ! -d "$BOUTIQUES_PROV_DIR" ]; then
-    error "Boutiques cache dir $BOUTIQUES_PROV_DIR does not exist."
+  # $boutiquesProvenanceDir is defined by GASW from the settings file
+  if [ ! -d "$boutiquesProvenanceDir" ]; then
+    error "Boutiques cache dir $boutiquesProvenanceDir does not exist."
     return 1
   fi
   # shellcheck disable=SC2010
-  local provenanceFile=$(ls -t "$BOUTIQUES_PROV_DIR" | grep -v "^descriptor_" | head -n 1)
+  local provenanceFile=$(ls -t "$boutiquesProvenanceDir" | grep -v "^descriptor_" | head -n 1)
   if [[ -z "$provenanceFile" ]]; then
-    error "No provenance found in boutiques cache $BOUTIQUES_PROV_DIR"
+    error "No provenance found in boutiques cache $boutiquesProvenanceDir"
     return 2
   fi
-  info "Found provenance file $BOUTIQUES_PROV_DIR/$provenanceFile"
+  info "Found provenance file $boutiquesProvenanceDir/$provenanceFile"
   info "Copying it to $dest"
-  cp "$BOUTIQUES_PROV_DIR/$provenanceFile" "$BASEDIR"
-  cp "$BOUTIQUES_PROV_DIR/$provenanceFile" "$dest"
+  cp "$boutiquesProvenanceDir/$provenanceFile" "$BASEDIR"
+  cp "$boutiquesProvenanceDir/$provenanceFile" "$dest"
 }
 
 function performUpload {
@@ -1016,6 +1000,8 @@ EOF
 
 ### main
 
+## global init
+
 # Check if directories already exist (In case of LOCAL, the directories already exists. To replicate the LOCAL execution in DIRAC, we create the directories on the remote node)
 if [[ ! -d "config" || ! -d "inv" ]]; then
   # Create the directories if they don't already exist
@@ -1031,8 +1017,8 @@ else
   info "Directories already exist. Skipping copy."
 fi
 
-configurationFile="config/$configurationFilename"
 # Source the configuration file
+configurationFile="config/$configurationFilename"
 if [ -f "$configurationFile" ]; then
   # here we declare all variables that are expected in $configurationFile:
   # this is useful both as a way to document this interface, and also to avoid
@@ -1042,10 +1028,9 @@ if [ -f "$configurationFile" ]; then
   cacheFile=
   minAvgDownloadThroughput=
   srmTimeout=
-  simulationID=
-  timeout=
   # shellcheck disable=SC2034
-  bdiiTimeout= # unused?
+  simulationID= # unused
+  timeout=
   boshCVMFSPath=
   voDefaultSE=
   uploadURI=
@@ -1055,7 +1040,6 @@ if [ -f "$configurationFile" ]; then
   singularityPath=
   containersCVMFSPath=
   nrep=
-  voUseCloseSE=
   boutiquesProvenanceDir=
 
   # shellcheck disable=SC1090
@@ -1074,8 +1058,8 @@ else \
 fi' INT EXIT
 
 # Shanoir token variables
-SHANOIR_TOKEN_LOCATION="${PWD}/cache/SHANOIR_TOKEN.txt"
-SHANOIR_REFRESH_TOKEN_LOCATION="${PWD}/cache/SHANOIR_REFRESH_TOKEN.txt"
+SHANOIR_TOKEN_LOCATION="$cacheDir/SHANOIR_TOKEN.txt"
+SHANOIR_REFRESH_TOKEN_LOCATION="$cacheDir/SHANOIR_REFRESH_TOKEN.txt"
 REFRESHING_JOB_STARTED=false
 REFRESH_PID=""
 
@@ -1087,22 +1071,12 @@ startLog header
 START=$(date +%s)
 echo "START date is ${START}"
 
-# Execution environment setup
-
 # Build the custom environment
 ENV="$defaultEnvironment"
 if test -n "$ENV"; then
   # shellcheck disable=SC2163,SC2086
   export $ENV
 fi
-export SE="$voDefaultSE"
-# shellcheck disable=SC2034
-USE_CLOSE_SE="$voUseCloseSE" # unused
-export BOSH_CVMFS_PATH="$boshCVMFSPath"
-export CONTAINERS_CVMFS_PATH="$containersCVMFSPath"
-export UDOCKER_TAG="$udockerTag"
-export BOUTIQUES_PROV_DIR="$boutiquesProvenanceDir"
-export MOTEUR_WORKFLOWID="$simulationID"
 
 # Create execution directory
 mkdir "$DIRNAME"
@@ -1115,26 +1089,22 @@ else
   exit 7
 fi
 
-BACKPID=""
+# Create cache directory
+mkdir -p "$cacheDir"
 
-# DIRAC may wrongly position this variable
-# unset it if it is defined and not a directory
-if [ -n "${X509_CERT_DIR+set}" ] && [ ! -d "$X509_CERT_DIR" ]; then
-  echo "Unsetting invalid X509_CERT_DIR ($X509_CERT_DIR)"
-  unset X509_CERT_DIR
-fi
-
+# Init done
 echo "END date is $(date +%s)"
 
 stopLog header
 
+## core actions: download inputs, execute app, upload result
+
 showHostConfig
-
-mkdir -p "$cacheDir"
-
 performDownload
 performExec
 performUpload
+
+## footer and cleanup
 
 startLog footer
 
