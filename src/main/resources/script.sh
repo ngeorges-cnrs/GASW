@@ -40,13 +40,14 @@ function error {
 }
 
 function startLog {
-  # write to stdout+stderr
-  echo "<$*>" | tee /dev/stderr
+  echo "<$*>" >&1
+  echo "<$*>" >&2
 }
 
 function stopLog {
   local logName="$1"
-  echo "</${logName}>" | tee /dev/stderr
+  echo "</${logName}>" >&1
+  echo "</${logName}>" >&2
 }
 
 function showHostConfig {
