@@ -130,9 +130,11 @@ function checkDocker {
 
   # find pre-deployed containers on CVMFS,
   # and create a symlink to the udocker containers directory.
-  for d in "$containersCVMFSPath"/*/; do
-    mkdir "containers/$(basename "${d%/}")" && ln -s "${d%/}"/* "containers/$(basename "${d%/}")/"
-  done
+  if [ -d "$containersCVMFSPath" ]; then
+    for d in "$containersCVMFSPath"/*/; do
+      mkdir "containers/$(basename "${d%/}")" && ln -s "${d%/}"/* "containers/$(basename "${d%/}")/"
+    done
+  fi
   cat >docker <<'EOF'
 #!/bin/bash
 MYARGS=$*
@@ -184,7 +186,12 @@ function cleanup {
   info "=== cat $cacheDir/$cacheFile === "
   cat "$cacheDir/$cacheFile"
   info "Cleaning up: $(echo rm * -Rf)"
+  # remove all files in the exec dir
   rm -Rf -- *
+  # remove TMP_FOLDER if it was defined
+  if [ -n "$TMP_FOLDER" ]; then
+    rm -Rf "$TMP_FOLDER"
+  fi
   info "END date:"
   date +%s
   stopLog cleanup
@@ -664,6 +671,10 @@ function performExec {
   checkDocker
   checkSingularity
 
+  # Temporary directory for /tmp in containers, set in a global var for cleanup
+  TMP_FOLDER="$PWD/../tmp_$(basename "$PWD")"
+  mkdir -p "$TMP_FOLDER"
+
   # Extract imagepath
   local boshopts=()
   local imagepath=$(python -c 'import sys,json;v=json.load(sys.stdin).get("custom",None);print(v.get("vip:imagepath","") if isinstance(v,dict) else "")' < "../$boutiquesFilename")
@@ -672,7 +683,7 @@ function performExec {
   fi
 
   # Execute the command
-  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache"
+  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache" -v "$TMP_FOLDER:/tmp"
 
   # Check if execution was successful
   if [ $? -ne 0 ]; then
