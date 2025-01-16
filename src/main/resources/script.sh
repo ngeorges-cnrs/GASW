@@ -10,11 +10,16 @@
 # Extract filename without extension
 DIRNAME=$(basename "${0%.sh}")
 
+# Base directory
+export BASEDIR="$PWD"
+
 # Path to the configuration JSON file
 configurationFilename="$DIRNAME-configuration.sh"
 invocationJsonFilename="$DIRNAME-invocation.json"
 
 ### functions
+
+## logging
 
 function logDate {
   # LC_ALL=C: use neutral locale for date output
@@ -45,9 +50,41 @@ function stopLog {
   echo "</${logName}>" >&2
 }
 
+function showHostConfig {
+  startLog host_config
+  echo "SE Linux mode is:"
+  /usr/sbin/getenforce
+  echo "gLite Job Id is ${GLITE_WMS_JOBID}"
+  echo "===== uname ===== "
+  uname -a
+  domainname -a
+  echo "===== network config ===== "
+  /sbin/ifconfig eth0
+  local dmesg_line=$(dmesg | grep 'Link is Up' | uniq)
+  local netspeed=$(echo "$dmesg_line" | grep -o '[0-9]*[[:space:]][a-zA-Z]bps'| awk '{gsub(/ /,"",$0);print}')
+  echo "NetSpeed = $netspeed ($dmesg_line)"
+  echo "===== CPU info ===== "
+  cat /proc/cpuinfo
+  echo "===== Memory info ===== "
+  cat /proc/meminfo
+  echo "===== lcg-cp location ===== "
+  which lcg-cp
+  echo "===== ls -a . ===== "
+  ls -a
+  echo "===== ls -a .. ===== "
+  ls -a ..
+  echo "===== env ====="
+  env
+  echo "===== rpm -qa  ===="
+  rpm -qa
+  stopLog host_config
+}
+
+## runtime tools installation
+
 function checkBosh {
   local BOSH_CVMFS_PATH="$1"
-  #by default, use CVMFS bosh
+  # by default, use CVMFS bosh
   "$BOSH_CVMFS_PATH"/bosh create foo.sh
   if [ $? != 0 ]; then
     info "CVMFS bosh in ${BOSH_CVMFS_PATH} not working, checking for a local version"
@@ -78,17 +115,20 @@ function checkBosh {
   fi
 }
 
-function download_udocker {
-  # install udocker
+function checkDocker {
+  if command -v docker; then
+    return 0
+  fi
+  # install udocker (A basic user tool to execute simple docker containers in batch or interactive systems without root privileges)
   info "cloning udocker $UDOCKER_TAG"
   git clone --depth=1 --branch "$UDOCKER_TAG" https://github.com/indigo-dc/udocker.git
   (cd udocker/udocker && ln -s maincmd.py udocker)
   export PATH="$PWD/udocker/udocker:$PATH"
-  
+
   # creating a temporary directory for udocker containers
   mkdir -p containers
   export UDOCKER_CONTAINERS="$PWD/containers"
-  
+
   # find pre-deployed containers on CVMFS,
   # and create a symlink to the udocker containers directory.
   for d in "$CONTAINERS_CVMFS_PATH"/*/; do
@@ -104,34 +144,32 @@ EOF
   export PATH="$PWD:$PATH"
 }
 
-function showHostConfig {
-  echo "SE Linux mode is:"
-  /usr/sbin/getenforce
-  echo "gLite Job Id is ${GLITE_WMS_JOBID}"
-  echo "===== uname ===== "
-  uname -a
-  domainname -a
-  echo "===== network config ===== "
-  /sbin/ifconfig eth0
-  local dmesg_line=$(dmesg | grep 'Link is Up' | uniq)
-  local netspeed=$(echo "$dmesg_line" | grep -o '[0-9]*[[:space:]][a-zA-Z]bps'| awk '{gsub(/ /,"",$0);print}')
-  echo "NetSpeed = $netspeed ($dmesg_line)"
-  echo "===== CPU info ===== "
-  cat /proc/cpuinfo
-  echo "===== Memory info ===== "
-  cat /proc/meminfo
-  echo "===== lcg-cp location ===== "
-  which lcg-cp
-  echo "===== ls -a . ===== "
-  ls -a
-  echo "===== ls -a .. ===== "
-  ls -a ..
-  echo "===== env ====="
-  env
-  echo "===== rpm -qa  ===="
-  rpm -qa
+function checkSingularity {
+  # Check that singularity is in PATH
+  # command -v displays the path to singularity if found
+  info "checking for singularity"
+  if ! command -v singularity; then
+    if test -d "$singularityPath"; then
+      export PATH="$singularityPath:$PATH"
+      info "adding singularityPath to PATH ($singularityPath)"
+    else
+      warning "singularityPath not found ($singularityPath), leaving PATH unchanged"
+    fi
+  fi
 }
 
+function checkGirderClient {
+  if ! command -v girder-client; then
+    pip install --user girder-client
+    if [ $? != 0 ]; then
+      error "girder-client not in PATH, and an error occured while trying to install it."
+      error "Exiting with return value 1"
+      exit 1
+    fi
+  fi
+}
+
+## termination handler
 
 function cleanup {
   # flag checks if directories are mounted with gfal
@@ -162,6 +200,8 @@ function cleanup {
   stopLog cleanup
   check_cleanup=true
 }
+
+## cache management
 
 function addToCache {
   cacheDir=${BASEDIR}/cache
@@ -245,7 +285,7 @@ function checkCacheDownloadAndCacheLFN {
   else
     info "There is no entry in the cache"
   fi
-    
+
   if [ "${download}" = "false" ]; then
     info "Linking file from cache: ${LOCALPATH}"
     BASE=$(basename "$LFN")
@@ -263,6 +303,8 @@ function checkCacheDownloadAndCacheLFN {
     return 0
   fi
 }
+
+## shanoir token management
 
 # This is a background process to refresh shanoir token
 # URIs are of the form of the following example. A single "/", instead
@@ -352,6 +394,7 @@ function wait_for_token {
   fi
 }
 
+## download helpers
 
 function downloadLFN {
   local LFN="$1"
@@ -419,27 +462,22 @@ function downloadGirderFile {
   local fileId=$(echo "$URI" | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
   local token=$(echo "$URI" | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
 
-  if ! command -v girder-client; then
-    pip install --user girder-client
-    if [ $? != 0 ]; then
-      echo "girder-client not in PATH, and an error occurred while trying to install it."
-      echo "Exiting with return value 1"
-      exit 1
-    fi
-  fi
+  checkGirderClient
 
-  COMMLINE="girder-client --api-url ${apiUrl} --token ${token} download --parent-type file ${fileId} ./${fileName}"
+  local COMMLINE="girder-client --api-url ${apiUrl} --token ${token} download --parent-type file ${fileId} ./${fileName}"
   echo "downloadGirderFile, command line is ${COMMLINE}"
   ${COMMLINE}
 }
 
+function gfalCheckMount {
+  test -z "$(for file in *; do findmnt -t fuse.gfalFS -lo Target -n -T "$(realpath "$file")"; done)" && echo 1 || echo 0
+}
 
 # This function identifies the gfal path and extracts the basename of the directory to be mounted,
 # and creates a directory with the exact name on $PWD of the node. This directory gets mounted with
 # the corresponding directory on the SE.
 #
 # This function checks for all the gfal mounts in the current folder.
-
 function mountGfal {
   local URI="$1"
 
@@ -458,10 +496,8 @@ function mountGfal {
   ${GFAL_COMMAND}
   # Let nfs-kernel-server export the directory and write logs
   sleep 30
-  # shellcheck disable=SC2086
-  eval echo $check_mount
+  gfalCheckMount
 }
-
 
 # This function un-mounts all the gfal mounted directories by searching them
 # with 'findmnt' and filtering them with FSTYPE 'fuse.gfalFS'. This function
@@ -469,8 +505,7 @@ function mountGfal {
 # failure of the job, or interruption of the job.
 function unmountGfal {
   START=$SECONDS
-  # shellcheck disable=SC2086
-  while [ "$(eval echo $check_mount)" = 0 ]; do
+  while [ "$(gfalCheckMount)" = 0 ]; do
     for file in "$PWD"/*; do
       findmnt -t fuse.gfalFS -lo Target -n -T "$(realpath "$file")" && gfalFS_umount "$(realpath "$file")"
     done
@@ -481,10 +516,8 @@ function unmountGfal {
       break
     fi
   done
-  # shellcheck disable=SC2086
-  eval echo $check_mount
+  gfalCheckMount
 }
-
 
 # URI are of the form of the following example. A single "/", instead
 # of 3, after "shanoir:" is also allowed.
@@ -493,7 +526,7 @@ function unmountGfal {
 # This method depends on the refresh token process to refresh the token when it needs
 function downloadShanoirFile {
   local URI="$1"
-    
+
   wait_for_token
 
   local token=$(cat "$SHANOIR_TOKEN_LOCATION")
@@ -592,7 +625,7 @@ function downloadURI {
   if [[ ${URI_LOWER} == shanoir:/* ]]; then
     if [[ "$REFRESHING_JOB_STARTED" == false ]]; then
       refresh_token "$URI" &
-      REFRESH_PID=$!  
+      REFRESH_PID=$!
       REFRESHING_JOB_STARTED=true
     fi
     downloadShanoirFile "$URI"
@@ -607,6 +640,72 @@ function downloadURI {
     fi
   fi
 }
+
+function performDownload {
+  startLog inputs_download
+
+  # Create a file to disable watchdog CPU wallclock check
+  touch ../DISABLE_WATCHDOG_CPU_WALLCLOCK_CHECK
+
+  # Iterate over each URL in the 'downloads' array
+  for download in "${downloads[@]}"; do
+    # Remove leading and trailing whitespace
+    local download="$(echo -e "${download}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    # Process the URL using downloadURI function
+    downloadURI "$download"
+  done
+
+  # Change permissions of all files in the directory
+  chmod 755 -- *
+  # Record the timestamp after downloads
+  AFTERDOWNLOAD=$(date +%s)
+
+  stopLog inputs_download
+}
+
+## exec helpers
+
+function performExec {
+  startLog application_execution
+
+  # Add a delay to ensure file creation before proceeding
+  echo "BEFORE_EXECUTION_REFERENCE" > BEFORE_EXECUTION_REFERENCE_FILE
+  sleep 1
+
+  checkBosh "$BOSH_CVMFS_PATH"
+  checkDocker
+  checkSingularity
+
+  # Export current directory to LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
+
+  # Extract imagepath
+  local boshopts=()
+  local imagepath=$(python -c 'import sys,json;v=json.load(sys.stdin).get("custom",None);print(v.get("vip:imagepath","") if isinstance(v,dict) else "")' < "../$boutiquesFilename")
+  if [ -n "$imagepath" ]; then
+    boshopts+=("--imagepath" "$imagepath")
+  fi
+
+  # Execute the command
+  PYTHONPATH=".:$PYTHONPATH" "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache"
+
+  # Check if execution was successful
+  if [ $? -ne 0 ]; then
+    error "Exiting with return value 6"
+    BEFOREUPLOAD=$(date +%s)
+    info "Execution time: $((BEFOREUPLOAD - AFTERDOWNLOAD)) seconds"
+    stopLog application_execution
+    cleanup
+    exit 6
+  fi
+
+  BEFOREUPLOAD=$(date +%s)
+  stopLog application_execution
+
+  info "Execution time was $((BEFOREUPLOAD - AFTERDOWNLOAD))s"
+}
+
+## upload helpers
 
 function nSEs {
   local i=0
@@ -720,7 +819,7 @@ function uploadLfnFile {
 # URI are of the form of the following example.  A single "/", instead
 # of 3, after "shanoir:" is also allowed.
 # shanoir:/path/to/file/filename?upload_url=https://upload/url/&type=File&md5=None
-# 
+#
 # This method depends on refresh token process to refresh the token when it needs
 function uploadShanoirFile {
   local URI="$1"
@@ -736,7 +835,7 @@ function uploadShanoirFile {
   local type=$(echo "$URI" | sed -r 's/^.*[?&]type=([^&]*)(&.*)?$/\1/i')
   local md5=$(echo "$URI" | sed -r 's/^.*[?&]md5=([^&]*)(&.*)?$/\1/i')
 
-  COMMAND() { 
+  COMMAND() {
     (echo -n '{"base64Content": "'; base64 "$fileName"; echo '", "type":"'; echo "$type"; echo '", "md5":"'; echo "$md5" ; echo '"}') | curl --write-out '%{http_code}' --request PUT "$upload_url/$filePath"  --header "Authorization: Bearer $token"  --header "Content-Type: application/carmin+json" --header 'Accept: application/json, text/plain, */*' -d @-
   }
 
@@ -764,16 +863,9 @@ function uploadGirderFile {
   local fileId=$(echo "$URI" | sed -r 's/^.*[?&]fileid=([^&]*)(&.*)?$/\1/i')
   local token=$(echo "$URI" | sed -r 's/^.*[?&]token=([^&]*)(&.*)?$/\1/i')
 
-  if ! command -v girder-client; then
-    pip install --user girder-client
-    if [ $? != 0 ]; then
-      error "girder-client not in PATH, and an error occured while trying to install it."
-      error "Exiting with return value 1"
-      exit 1
-    fi
-  fi
+  checkGirderClient
 
-  COMMLINE="girder-client --api-url ${apiUrl} --token ${token} upload --parent-type folder ${fileId} ./${fileName}"
+  local COMMLINE="girder-client --api-url ${apiUrl} --token ${token} upload --parent-type folder ${fileId} ./${fileName}"
   echo "uploadGirderFile, command line is ${COMMLINE}"
   ${COMMLINE}
   if [ $? != 0 ]; then
@@ -790,13 +882,13 @@ function upload {
   local NREP="$3"
   local TEST="$4"
   startLog file_upload uri="$URI"
-    
+
   # The pattern must NOT be put between quotation marks.
   if [[ ${URI} == shanoir:/* ]]; then
     if [ "${TEST}" != "true" ]; then
       if [ "$REFRESHING_JOB_STARTED" == false ]; then
         refresh_token "$URI" &
-        REFRESH_PID=$!  
+        REFRESH_PID=$!
         REFRESHING_JOB_STARTED=true
       fi
       uploadShanoirFile "$URI"
@@ -864,6 +956,64 @@ function copyProvenanceFile {
   cp "$BOUTIQUES_PROV_DIR/$provenanceFile" "$dest"
 }
 
+function performUpload {
+  local provenanceFile="$BASEDIR/$DIRNAME.sh.provenance.json"
+  copyProvenanceFile "$provenanceFile"
+
+  startLog results_upload
+
+  # Extract the file names and store them in a bash array
+  local file_names=$(python <<EOF
+import json, sys
+with open("$provenanceFile", "r") as file:
+    outputs = json.load(file)['public-output']['output-files']
+    print(*[value.get('file-name') for value in outputs.values()])
+EOF
+)
+
+  # Remove square brackets from uploadURI
+  # (we assume UploadURI will always be a single string)
+  uploadURI=$(echo "$uploadURI" | sed 's/^\[//; s/\]$//')
+
+  info "uploadURI : $uploadURI"
+
+  # Check if uploadURI starts with "file:/"
+  if [[ "$uploadURI" == file:* ]]; then
+    # Get the actual file system path by removing 'file:' prefix
+    local dir_path="${uploadURI#file:}"
+    # Create the directory if it doesn't exist
+    mkdir -p "$dir_path"
+    # Check if the directory was successfully created or exists
+    if [ -d "$dir_path" ]; then
+      echo "Directory '$dir_path' successfully created or already exists."
+    else
+      echo "Failed to create directory '$dir_path'."
+      exit 1 # Exit the script with an error status
+    fi
+  fi
+
+  # Check if the array is not empty and print the results
+  if [ -z "$file_names" ]; then
+    echo "No file names found in the output-files section."
+  else
+    echo "File names found:"
+    for file_name in $file_names; do
+      echo "$file_name"
+
+      # Define the upload path
+      local upload_path="${uploadURI}/${file_name}"
+
+      # Generate a random string for the upload command
+      local random_string=$(tr -dc '[:alpha:]' < /dev/urandom 2>/dev/null | head -c 32)
+
+      # Execute the upload command
+      upload "$upload_path" "$random_string" "$nrep" false
+    done
+  fi
+
+  stopLog results_upload
+}
+
 ### main
 
 # Check if directories already exist (In case of LOCAL, the directories already exists. To replicate the LOCAL execution in DIRAC, we create the directories on the remote node)
@@ -881,7 +1031,6 @@ else
   info "Directories already exist. Skipping copy."
 fi
 
-export BASEDIR="$PWD"
 configurationFile="config/$configurationFilename"
 # Source the configuration file
 if [ -f "$configurationFile" ]; then
@@ -903,6 +1052,7 @@ if [ -f "$configurationFile" ]; then
   downloads=
   boutiquesFilename=
   udockerTag=
+  singularityPath=
   containersCVMFSPath=
   nrep=
   voUseCloseSE=
@@ -916,7 +1066,6 @@ else
 fi
 
 # Register cleanup handler
-export -f cleanup
 trap 'echo "trap activation" && stopRefreshingToken | \
 if [ "$check_cleanup" = true ]; then \
   echo "cleanup was already executed successfully"; \
@@ -924,15 +1073,13 @@ else \
   echo "Executing cleanup" && cleanup; \
 fi' INT EXIT
 
-# Shanoir token management
+# Shanoir token variables
 SHANOIR_TOKEN_LOCATION="${PWD}/cache/SHANOIR_TOKEN.txt"
 SHANOIR_REFRESH_TOKEN_LOCATION="${PWD}/cache/SHANOIR_REFRESH_TOKEN.txt"
 REFRESHING_JOB_STARTED=false
 REFRESH_PID=""
 
-# Gfal mount management
-# shellcheck disable=SC2016
-check_mount='$(test -z $(for file in *; do findmnt -t fuse.gfalFS -lo Target -n -T $(realpath ${file}); done) && echo 1 || echo 0)'
+# Gfal mount flag
 isGfalmountExec=1
 
 # Start logging
@@ -942,8 +1089,7 @@ echo "START date is ${START}"
 
 # Execution environment setup
 
-# Builds the custom environment
-# XXX unsure if intended: this just dumps env if $defaultEnvironment is empty
+# Build the custom environment
 ENV="$defaultEnvironment"
 if test -n "$ENV"; then
   # shellcheck disable=SC2163,SC2086
@@ -982,135 +1128,13 @@ echo "END date is $(date +%s)"
 
 stopLog header
 
-if [ "$XXX_SKIP_HOST_CONFIG" != "true" ]; then
-  startLog host_config
-  showHostConfig
-  stopLog host_config
-fi
+showHostConfig
 
 mkdir -p "$cacheDir"
 
-startLog inputs_download
-
-# Create a file to disable watchdog CPU wallclock check
-touch ../DISABLE_WATCHDOG_CPU_WALLCLOCK_CHECK
-
-# Iterate over each URL in the 'downloads' array
-for download in "${downloads[@]}"; do
-  # Remove leading and trailing whitespace
-  download="$(echo -e "${download}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  # Process the URL using downloadURI function
-  downloadURI "$download"
-done
-
-# Change permissions of all files in the directory
-chmod 755 -- *
-# Record the timestamp after downloads
-AFTERDOWNLOAD=$(date +%s)
-# Stop log for inputs download
-stopLog inputs_download
-
-
-startLog application_environment
-stopLog application_environment
-
-
-startLog application_execution
-
-# Add a delay to ensure file creation before proceeding
-echo "BEFORE_EXECUTION_REFERENCE" > BEFORE_EXECUTION_REFERENCE_FILE
-sleep 1
-
-checkBosh "$BOSH_CVMFS_PATH"
-
-# Clone udocker (A basic user tool to execute simple docker containers in batch or interactive systems without root privileges)
-if ! command -v docker; then
-  download_udocker
-fi
-
-# Export current directory to LD_LIBRARY_PATH
-export LD_LIBRARY_PATH="$PWD:$LD_LIBRARY_PATH"
-
-# Extract imagepath
-boshopts=()
-imagepath=$(python -c 'import sys,json;v=json.load(sys.stdin).get("custom",None);print(v.get("vip:imagepath","") if isinstance(v,dict) else "")' < "../$boutiquesFilename")
-if [ -n "$imagepath" ]; then
-  boshopts+=("--imagepath" "$imagepath")
-fi
-
-# Execute the command
-PYTHONPATH=".:$PYTHONPATH" "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache"
-
-# Check if execution was successful
-if [ $? -ne 0 ]; then
-  error "Exiting with return value 6"
-  BEFOREUPLOAD=$(date +%s)
-  info "Execution time: $((BEFOREUPLOAD - AFTERDOWNLOAD)) seconds"
-  stopLog application_execution
-  cleanup
-  exit 6
-fi
-
-BEFOREUPLOAD=$(date +%s)
-stopLog application_execution
-
-info "Execution time was $((BEFOREUPLOAD - AFTERDOWNLOAD))s"
-
-
-provenanceFile="$BASEDIR/$DIRNAME.sh.provenance.json"
-copyProvenanceFile "$provenanceFile"
-
-startLog results_upload
-
-# Extract the file names and store them in a bash array
-file_names=$(python <<EOF
-import json, sys
-with open("$provenanceFile", "r") as file:
-    outputs = json.load(file)['public-output']['output-files']
-    print(*[value.get('file-name') for value in outputs.values()])
-EOF
-)
-
-# Remove square brackets from uploadURI (we assume UploadURI will always be a single string)
-uploadURI=$(echo "$uploadURI" | sed 's/^\[//; s/\]$//')
-
-info "uploadURI : $uploadURI"
-
-#  Check if uploadURI starts with "file:/"
-if [[ "$uploadURI" == file:* ]]; then
-  # Get the actual file system path by removing 'file:' prefix
-  dir_path="${uploadURI#file:}"
-  # Create the directory if it doesn't exist
-  mkdir -p "$dir_path"
-  # Check if the directory was successfully created or exists
-  if [ -d "$dir_path" ]; then
-    echo "Directory '$dir_path' successfully created or already exists."
-  else
-    echo "Failed to create directory '$dir_path'."
-    exit 1 # Exit the script with an error status
-  fi
-fi
-
-# Check if the array is not empty and print the results
-if [ -z "$file_names" ]; then
-  echo "No file names found in the output-files section."
-else
-  echo "File names found:"
-  for file_name in $file_names; do
-    echo "$file_name"
-
-    # Define the upload path
-    upload_path="${uploadURI}/${file_name}"
-
-    # Generate a random string for the upload command
-    random_string=$(tr -dc '[:alpha:]' < /dev/urandom 2>/dev/null | head -c 32)
-
-    # Execute the upload command
-    upload "$upload_path" "$random_string" "$nrep" false
-  done
-fi
-
-stopLog results_upload
+performDownload
+performExec
+performUpload
 
 startLog footer
 

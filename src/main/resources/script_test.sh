@@ -34,12 +34,12 @@ uploadURI="file:/var/www/html/workflows/SharedData/users/admin_test/06-01-2025_0
 downloads=""
 boutiquesFilename="workflow.json"
 udockerTag="1.3.1"
+singularityPath="/cvmfs/dirac.egi.eu/dirac/v8.0.39/Linux-x86_64/bin"
 containersCVMFSPath="/cvmfs/biomed.egi.eu/vip/udocker/containers"
 nrep="1"
 voUseCloseSE="true"
 boutiquesProvenanceDir="$HOME/.cache/boutiques/data"
 
-XXX_SKIP_HOST_CONFIG=true
 udockerTag="1.3.17"
 uploadURI="file:$PWD/_uploads/$(date +%Y%m%d%H%M%S)"
 EOF
@@ -52,22 +52,4 @@ if command -v shellcheck >/dev/null; then
 fi
 
 # todo /refactor:
-# . remove XXXs
-#   . see if export "" is intentional, and defaultEnvironment value in practice
-#     adjust added test -n "$ENV" as needed
-#   . remove temporary skip of host config
-# . speedup bosh/docker install for testing
-# . test a program with download files (see wiki pkg)
-# . gfal check_mount: move to a subfunction to avoid eval
-# . SHANOIR_TOKEN/REFRESH ${PWD}/cache should be $cacheDir ?
-# . python vs sed for url parsing, in subfunction
-# . SC2034 cleanup some unused variables?
 
-# probably too much:
-# . smaller main & more subfunctions (lots of alteration of global state)
-#   candidates:
-#   . uploadResults (log section results_upload, maybe including copyProvenance)
-#   . 
-#
-# . suspicious LD_LIBRARY_PATH
-# . bosh install method
