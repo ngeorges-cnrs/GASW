@@ -188,10 +188,6 @@ function cleanup {
   info "Cleaning up: $(echo rm * -Rf)"
   # remove all files in the exec dir
   rm -Rf -- *
-  # remove TMP_FOLDER if it was defined
-  if [ -n "$TMP_FOLDER" ]; then
-    rm -Rf "$TMP_FOLDER"
-  fi
   info "END date:"
   date +%s
   stopLog cleanup
@@ -667,13 +663,14 @@ function performExec {
   echo "BEFORE_EXECUTION_REFERENCE" > BEFORE_EXECUTION_REFERENCE_FILE
   sleep 1
 
+  # Get execution tools
   checkBosh
   checkDocker
   checkSingularity
 
-  # Temporary directory for /tmp in containers, set in a global var for cleanup
-  TMP_FOLDER="$PWD/../tmp_$(basename "$PWD")"
-  mkdir -p "$TMP_FOLDER"
+  # Temporary directory for /tmp in containers
+  local tmpfolder="$PWD/tmp"
+  mkdir -p "$tmpfolder"
 
   # Extract imagepath
   local boshopts=()
@@ -683,7 +680,7 @@ function performExec {
   fi
 
   # Execute the command
-  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache" -v "$TMP_FOLDER:/tmp"
+  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache" -v "$tmpfolder:/tmp"
 
   # Check if execution was successful
   if [ $? -ne 0 ]; then
@@ -876,23 +873,18 @@ function upload {
   # shellcheck disable=SC2034
   local ID="$2" # unused
   local NREP="$3"
-  local TEST="$4"
   startLog file_upload uri="$URI"
 
   # The pattern must NOT be put between quotation marks.
   if [[ ${URI} == shanoir:/* ]]; then
-    if [ "${TEST}" != "true" ]; then
-      if [ "$REFRESHING_JOB_STARTED" == false ]; then
-        refresh_token "$URI" &
-        REFRESH_PID=$!
-        REFRESHING_JOB_STARTED=true
-      fi
-      uploadShanoirFile "$URI"
+    if [ "$REFRESHING_JOB_STARTED" == false ]; then
+      refresh_token "$URI" &
+      REFRESH_PID=$!
+      REFRESHING_JOB_STARTED=true
     fi
+    uploadShanoirFile "$URI"
   elif [[ ${URI} == girder:/* ]]; then
-    if [ "${TEST}" != "true" ]; then
-      uploadGirderFile "$URI"
-    fi
+    uploadGirderFile "$URI"
   elif [[ ${URI} == file:/* ]]; then
     local FILENAME=$(echo "$URI" | sed 's%file://*%/%')
     local NAME=$(basename "$FILENAME")
@@ -901,10 +893,6 @@ function upload {
       error "Result file already exists: $FILENAME"
       error "Exiting with return value 1"
       exit 1
-    fi
-
-    if [ "${TEST}" = "true" ]; then
-      echo "test result" > "$NAME"
     fi
 
     mv "$NAME" "$FILENAME"
@@ -918,16 +906,7 @@ function upload {
     local LFN=$(echo "${URI}" | sed -r 's%^\w+://[^/]*(/[^?]+)(\?.*)?$%\1%')
     local NAME=${LFN##*/}
 
-    if [ "${TEST}" = "true" ]; then
-      LFN=${LFN}-uploadTest
-      echo "test result" > "$NAME"
-    fi
-
     uploadLfnFile "$LFN" "$PWD/$NAME" "$NREP"
-
-    if [ "${TEST}" = "true" ]; then
-      rm -f "$NAME"
-    fi
   fi
 
   stopLog file_upload
@@ -1003,11 +982,61 @@ EOF
       local random_string=$(tr -dc '[:alpha:]' < /dev/urandom 2>/dev/null | head -c 32)
 
       # Execute the upload command
-      upload "$upload_path" "$random_string" "$nrep" false
+      upload "$upload_path" "$random_string" "$nrep"
     done
   fi
 
   stopLog results_upload
+}
+
+## upload_test helpers
+
+function delete {
+  local URI="$1"
+
+  startLog file_delete uri="${URI}"
+
+  # The pattern must NOT be put between quotation marks.
+  if [[ ${URI} == girder:/* ]]; then
+    info "delete not supported for girder"
+  elif [[ ${URI} == file:/* ]]; then
+    local FILENAME=$(echo "$URI" | sed 's%file://*%/%')
+
+    info "Removing local file ${FILENAME}..."
+    rm -f "$FILENAME"
+  else
+    # Extract the path part from the uri, and sanitize it.
+    # "//" are not accepted by dirac commands.
+    local LFN=$(echo "${URI}" | sed -r -e 's%^\w+://[^/]*(/[^?]+)(\?.*)?$%\1%' -e 's#//#/#g')
+
+    info "Deleting file ${LFN}..."
+    dirac-dms-remove-files "${LFN}"
+  fi
+
+  stopLog file_delete
+}
+
+function testUpload {
+  local filename="uploadTest_$(basename "$PWD")"
+  local URI="$uploadURI/$filename"
+  local URI_LOWER=$(echo "$URI" | awk '{print tolower($0)}')
+
+  # upload_test is only done on Dirac, to avoid running the whole execution
+  # if we don't have a reliable way of uploading the result.
+  # This assumes that the "upload" function exits on error.
+  if [[ ${URI_LOWER} == lfn* ]] || [[ $URI_LOWER == /* ]]; then
+    startLog upload_test
+    if [ -f "$cacheDir/uploadChecked" ]; then
+      info "Skipping upload test (it has already been done by a previous job)"
+    else
+      echo "test result" > "$filename"
+      upload "$URI" "" 1
+      delete "$URI"
+      rm -f "$filename"
+      touch "$cacheDir/uploadChecked"
+    fi
+    stopLog upload_test
+  fi
 }
 
 ### main
@@ -1112,6 +1141,7 @@ stopLog header
 ## core actions: download inputs, execute app, upload result
 
 showHostConfig
+testUpload
 performDownload
 performExec
 performUpload
