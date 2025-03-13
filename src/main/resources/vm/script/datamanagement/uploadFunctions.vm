@@ -92,11 +92,11 @@ function uploadLfnFile {
             local command="dirac-dms-add-file"
             local source=$(hostname)
             dirac-dms-remove-files ${OPTS} ${LFN} &>/dev/null
-            (time -p dirac-dms-add-file ${OPTS} ${LFN} ${FILE} ${DEST}) &> dirac.log
+            (dirac-dms-add-file ${OPTS} ${LFN} ${FILE} ${DEST}) &> dirac.log
             local error_code=$?
         else
             local command="dirac-dms-replicate-lfn"
-            (time -p dirac-dms-replicate-lfn -d ${OPTS} ${LFN} ${DEST}) &> dirac.log
+            (dirac-dms-replicate-lfn -d ${OPTS} ${LFN} ${DEST}) &> dirac.log
             local error_code=$?
 
             # Extract the name of the source SE from the logs.
@@ -106,13 +106,7 @@ function uploadLfnFile {
         then
             info "Copy/Replication of ${LFN} to SE ${DEST} worked fine."
             done=`expr ${done} + 1`
-            local duration=$(grep -P '^real[ \t]' dirac.log | sed -r 's/real[ \t]//')
-            info "UploadCommand=${command} Source=${source} Destination=${DEST} Size=${size} Time=${duration}"
-            if [ -z "${duration}" ]
-            then
-                info "Missing duration info, printing the whole log file."
-                cat dirac.log
-            fi
+            info "UploadCommand=${command} Source=${source} Destination=${DEST} Size=${size}"
         else
             error "`cat dirac.log`"
             warning "Copy/Replication of ${LFN} to SE ${DEST} failed"

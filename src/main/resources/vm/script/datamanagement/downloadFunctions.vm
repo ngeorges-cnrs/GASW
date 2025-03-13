@@ -36,7 +36,7 @@ function downloadLFN {
 
     local totalTimeout=$((${timeout} + ${srmTimeout} + ${sendReceiveTimeout}))
 
-    local LINE="time -p dirac-dms-get-file -d -o /Resources/StorageElements/GFAL_TIMEOUT=${totalTimeout} ${LFN}"
+    local LINE="dirac-dms-get-file -d -o /Resources/StorageElements/GFAL_TIMEOUT=${totalTimeout} ${LFN}"
     info ${LINE}
     (${LINE}) &> get-file.log
 
@@ -44,8 +44,7 @@ function downloadLFN {
     then
         info "dirac-dms-get-file worked fine"
         local source=$(grep "generating url" get-file.log | tail -1 | sed -r 's/^.* (.*)\.$/\1/')
-        local duration=$(grep -P '^real[ \t]' get-file.log | sed -r 's/real[ \t]//')
-        info "DownloadCommand=dirac-dms-get-file Source=${source} Destination=$(hostname) Size=${size} Time=${duration}"
+        info "DownloadCommand=dirac-dms-get-file Source=${source} Destination=$(hostname) Size=${size}"
         RET_VAL=0
     else
         error "dirac-dms-get-file failed"
