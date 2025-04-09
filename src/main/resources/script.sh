@@ -727,12 +727,32 @@ function performExec {
   # Prepare bosh exec flags
   local boshopts=("--stream")
   boshopts+=("--provenance" "{\"jobid\":\"$DIRNAME\"}")
-  local imagepath=$(getJsonDepth2 "../$boutiquesFilename" "custom" "vip:imagepath")
-  if [ -n "$imagepath" ]; then
-    boshopts+=("--imagepath" "$imagepath")
-  fi
+
+  # simulate an apptainer env
+  case "$(basename "$MOTEUR_HOME")" in
+    m2)
+      boshopts+=("--force-singularity")
+      # XXX avoid jq + key name quoting
+      local image=$(jq -r '."container-image".image' "../$boutiquesFilename")
+      local appname=$(echo "$image" | cut -d: -f1)
+      local appversion=$(echo "$image" | cut -d: -f2)
+      local imgfile="$MOTEUR_HOME/images/${appname}_${appversion}"
+      if ! [ -e "$imgfile" ]; then
+        error "Invalid image file $imgfile"
+        exit 1
+      fi
+      boshopts+=("--imagepath" "$imgfile")
+      ;;
+    *)
+      local imagepath=$(getJsonDepth2 "../$boutiquesFilename" "custom" "vip:imagepath")
+      if [ -n "$imagepath" ]; then
+        boshopts+=("--imagepath" "$imagepath")
+      fi
+      ;;
+  esac
 
   # Execute the command
+  info "Running bosh (MOTEUR_HOME=$MOTEUR_HOME): $BOSHEXEC exec launch " "${boshopts[@]}" " ../$boutiquesFilename ../inv/$invocationJsonFilename -v $PWD/../cache:$PWD/../cache -v $tmpfolder:/tmp"
   "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache" -v "$tmpfolder:/tmp"
 
   # Check if execution was successful
