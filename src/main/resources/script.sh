@@ -732,6 +732,14 @@ function performExec {
   local tmpfolder=$(mktemp -d -p "$PWD" "tmp-XXXXXX")
   mkdir -p "$tmpfolder"
 
+  # XXX temporary workaround until GASW sets these
+  case "$(basename "$MOTEUR_HOME")" in
+    m2)
+      export containersRuntime="singularity"
+      export containersImagesBasePath="/home/admin/m2/images"
+      ;;
+  esac
+
   # Prepare bosh exec flags
   local boshopts=("--stream")
   boshopts+=("--provenance" "{\"jobid\":\"$DIRNAME\"}")
