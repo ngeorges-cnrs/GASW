@@ -241,8 +241,7 @@ function addToCache {
   local NAME=""
   while [ "$exist" = "true" ]; do
     NAME="$cacheDir/${FILE}-cache-${i}"
-    test -f "${NAME}"
-    if [ $? != 0 ]; then
+    if ! test -f "${NAME}"; then
       exist="false"
     fi
     ((i++))
@@ -736,13 +735,48 @@ function performExec {
   # Prepare bosh exec flags
   local boshopts=("--stream")
   boshopts+=("--provenance" "{\"jobid\":\"$DIRNAME\"}")
-  local imagepath=$(getJsonDepth2 "../$boutiquesFilename" "custom" "vip:imagepath")
+  local imagepath=
+  if [ -z "$containersRuntime" ]; then
+    # Legacy mode: get imagepath and container runtime from the descriptor
+    imagepath=$(getJsonDepth2 "../$boutiquesFilename" "custom" "vip:imagepath")
+  else
+    # Dynamic resource mode: use $containersRuntime+$containersImagesBasePath
+    case "$containersRuntime" in
+      docker)
+        boshopts+=("--force-docker")
+        ;;
+      singularity)
+        boshopts+=("--force-singularity")
+        # get image base name and tag from descriptor
+        local image=$(basename "$(getJsonDepth2 "../$boutiquesFilename" "container-image" "image")")
+        local imgname=$(echo "$image" | cut -d: -f1)
+        local imgtag=$(echo "$image" | cut -d: -f2)
+        if [ -z "$imgname" ] || [ -z "$imgtag" ]; then
+          error "Invalid image name: '$image'"
+          exit 1
+        fi
+        # set imagepath
+        imagepath="$containersImagesBasePath/${imgname}_${imgtag}"
+        if ! [ -e "$imagepath" ]; then
+          error "Image file not found: $imagepath"
+          exit 1
+        fi
+        ;;
+      *)
+        error "Invalid containersRuntime: '$containersRuntime'"
+        exit 1
+        ;;
+    esac
+  fi
   if [ -n "$imagepath" ]; then
     boshopts+=("--imagepath" "$imagepath")
   fi
+  boshopts+=("-v" "$PWD/../cache:$PWD/../cache")
+  boshopts+=("-v" "$tmpfolder:/tmp")
 
   # Execute the command
-  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename" -v "$PWD/../cache:$PWD/../cache" -v "$tmpfolder:/tmp"
+  info "Running bosh:" "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename"
+  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename"
 
   # Check if execution was successful
   if [ $? -ne 0 ]; then
@@ -1179,6 +1213,8 @@ if [ -f "$configurationFile" ]; then
   udockerTag=
   singularityPath=
   containersCVMFSPath=
+  containersRuntime=
+  containersImagesBasePath=
   nrep=
   boutiquesProvenanceDir=
 
