@@ -749,7 +749,11 @@ function performExec {
     imagepath=$(getJsonDepth2 "../$boutiquesFilename" "custom" "vip:imagepath")
   else
     # Dynamic resource mode: use $containersRuntime+$containersImagesBasePath
+    # XXX --container-opts problem
     case "$containersRuntime" in
+      none) # XXX check some other setting or if container-image field exists ?
+        boshopts+=("--no-container")
+        ;;
       docker)
         boshopts+=("--force-docker")
         ;;
