@@ -799,7 +799,58 @@ function performExec {
 
   # Execute the command
   info "Running bosh:" "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename"
-  "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename"
+  local maxtime=
+  if [ -e /vip_exec_maxtime ]; then
+    maxtime="$(cat /vip_exec_maxtime)"
+    info "maxtime: enabling max execution time=$maxtime"
+    maxtime="timeout $maxtime"
+  fi
+  $maxtime "$BOSHEXEC" exec launch "${boshopts[@]}" "../$boutiquesFilename" "../inv/$invocationJsonFilename"
+  local code=$?
+  if [ -n "$maxtime" ]; then
+    if [ $code = 124 ]; then
+      info "maxtime: timeout reached"
+      # create fake outputs
+      local outfiles=$($BOSHEXEC evaluate "../$boutiquesFilename" "../inv/$invocationJsonFilename" "output-files" | tr \' \" | jq -r "to_entries|.[].value" | xargs)
+      for fout in $outfiles; do
+        case "$fout" in
+          */*) mkdir -p "$(dirname "$fout")" ;;
+        esac
+        info "Creating fake output file: $fout"
+        echo "fake_output" >"$fout"
+      done
+      # create fake provenance file
+      local fakeprov=$(mktemp "$boutiquesProvenanceDir/fake_provenance_XXXXXX.json")
+      info "Creating fake provenance file: $fakeprov"
+cat <<EOF >"$fakeprov"
+{
+    "summary": {
+        "name": $(jq .name "../$boutiquesFilename"),
+        "descriptor-doi": "-",
+        "date-time": "-"
+    },
+    "public-invocation": $($BOSHEXEC evaluate "../$boutiquesFilename" "../inv/$invocationJsonFilename" "inputs" | tr \' \"),
+    "public-output": {
+        "stdout": null,
+        "stderr": null,
+        "exit-code": 0,
+        "error-message": "",
+        "shell-command": "-",
+        "missing-files": {},
+        "output-files": $($BOSHEXEC evaluate "../$boutiquesFilename" "../inv/$invocationJsonFilename" "output-files" | tr \' \" | jq "to_entries|map({key:.key, value:{\"file-name\":.value,\"md5sum\":\"-\"}})|from_entries")
+    },
+    "additional-information": {
+        "jobid": "$DIRNAME"
+    }
+}
+EOF
+      # set exit code to 0
+      sh -c "exit 0"
+    else # keep exit code unchanged
+      info "maxtime: execution completed, exit_status=$code"
+      sh -c "exit $code"
+    fi
+  fi
 
   # Check if execution was successful
   if [ $? -ne 0 ]; then
