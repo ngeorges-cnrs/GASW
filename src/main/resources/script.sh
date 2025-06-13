@@ -820,6 +820,7 @@ function performExec {
         echo "fake_output" >"$fout"
       done
       # create fake provenance file
+      # XXX this adds a jq dependency, and also bosh evaluate output would be better parsed with python rather than tr+sed. 
       local fakeprov=$(mktemp "$boutiquesProvenanceDir/fake_provenance_XXXXXX.json")
       info "Creating fake provenance file: $fakeprov"
 cat <<EOF >"$fakeprov"
@@ -829,7 +830,7 @@ cat <<EOF >"$fakeprov"
         "descriptor-doi": "-",
         "date-time": "-"
     },
-    "public-invocation": $($BOSHEXEC evaluate "../$boutiquesFilename" "../inv/$invocationJsonFilename" "inputs" | tr \' \"),
+    "public-invocation": $($BOSHEXEC evaluate "../$boutiquesFilename" "../inv/$invocationJsonFilename" "inputs" | tr \' \" | sed -e 's/True/true/g' -e 's/False/false/g'),
     "public-output": {
         "stdout": null,
         "stderr": null,
