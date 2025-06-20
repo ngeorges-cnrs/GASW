@@ -654,7 +654,11 @@ function downloadURI {
 
   if [[ ${URI_LOWER} == file:/* ]]; then
     local FILENAME=$(echo "$URI" | sed 's%file://*%/%')
-    cp "$FILENAME" .
+    if test -d "$FILENAME"; then
+      cp -r "$FILENAME" .
+    else
+      cp "$FILENAME" .
+    fi
     validateDownload "Cannot copy input file: $FILENAME"
   fi
 
@@ -793,7 +797,11 @@ function performExec {
       # . --container-opts requires bosh >=0.5.29
       # . it overrides "container-opts" from the descriptor
       local overlayfolder=$(mktemp -d -p "$PWD" "overlay-XXXXXX")
-      boshopts+=("--container-opts" "--overlay $overlayfolder")
+      local extra_opts=
+      if [ -e /vip_extra_bosh_opts ]; then
+        extra_opts=" $(cat /vip_extra_bosh_opts)"
+      fi
+      boshopts+=("--container-opts" "--overlay $overlayfolder$extra_opts")
       ;;
   esac
 
